@@ -268,7 +268,7 @@ Students may collect their own calm-room data, but that will usually contain no 
 The raw capture remains unchanged. Derived labels and synthetic examples are stored separately.
 """),
     code(r"""
-DATA_FILE = PROJECT_ROOT / "data" / "heatgun_box_002.csv"
+DATA_FILE = PROJECT_ROOT / "data" / "supplied_training_data.csv"
 
 raw_data = pd.read_csv(DATA_FILE)
 data = raw_data.dropna(subset=["temp_c", "humidity_pct"]).copy()

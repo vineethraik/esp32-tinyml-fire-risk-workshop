@@ -1,6 +1,6 @@
 # Heat-gun box run 001
 
-Source CSV: `heatgun_box_001.csv`
+Source CSV: `data/archive/heatgun_box_001.csv`
 
 ## Setup reported during collection
 

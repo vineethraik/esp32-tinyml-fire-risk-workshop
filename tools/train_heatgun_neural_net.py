@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 
-SOURCE = Path("data/heatgun_box_002.csv")
+SOURCE = Path("data/supplied_training_data.csv")
 ARTIFACTS = Path("artifacts")
 WINDOW_SAMPLES = 10
 SAMPLE_SECONDS = 2

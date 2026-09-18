@@ -41,7 +41,7 @@ activities without hardware.
 - Test one board, cable, DHT22, and serial port from start to finish.
 - Pre-install Python packages on lab PCs or provide a prepared virtual
   environment instructions sheet.
-- Keep the supplied `data/heatgun_box_002.csv` unchanged as the common dataset.
+- Keep `data/supplied_training_data.csv` unchanged as the common dataset.
 - Run the three training/export commands once and pre-flash at least one demo
   board.
 - Print the student guide or send its link before the class.

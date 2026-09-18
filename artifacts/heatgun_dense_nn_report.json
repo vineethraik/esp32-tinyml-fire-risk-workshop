@@ -1,5 +1,5 @@
 {
-  "source_file": "data/heatgun_box_002.csv",
+  "source_file": "data/supplied_training_data.csv",
   "source_rows": 31346,
   "measured_windows": 31307,
   "synthetic_windows": 2400,

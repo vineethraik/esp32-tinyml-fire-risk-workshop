@@ -17,6 +17,7 @@ small neural network on their PC, export it, and run it on an ESP32.
 - [Simple ML concepts](docs/ML_CONCEPTS.md) — plain-language explanations.
 - [Complete self-learning notebook](notebooks/complete_tinyml_fire_risk_workshop.ipynb) — the full workshop from requirements to conclusion, with executable training code.
 - [Firmware learning stages](firmware/README.md) — separate ESP32 projects for serial collection, flash storage, inference, and the final combined build.
+- [Dataset guide](data/README.md) — official supplied data, student captures, and archived provenance.
 
 The minimum live hardware demo needs only a NodeMCU ESP32S V1.1 and DHT22 V182.
 MQ-2 and flame sensing are later extensions, not prerequisites for this lesson.
@@ -148,18 +149,39 @@ pio run --target upload
 The inspectable derived windows are in
 `artifacts/heatgun_augmented_windows.csv`; `source=measured` means captured
 data and `source=synthetic` means an explicitly generated teaching example.
+This generated CSV is intentionally not committed; the training command creates
+it from `data/supplied_training_data.csv`.
 
-## Export to CSV
+## Collect live serial data
+
+Use the beginner firmware stage and Python collector:
 
 ```sh
-/Users/vineethraik/.platformio/penv/bin/python tools/collect_export.py \
+pio run --project-dir firmware/01_dht_serial --target upload
+python tools/collect_serial_csv.py \
   --port /dev/cu.usbserial-0001 \
-  --output data/dht_export.csv \
+  --output data/my_session.csv \
+  --count 100
+```
+
+Use the correct serial port for the PC. The collector refuses to overwrite an
+existing raw CSV unless `--append` is explicitly supplied.
+
+## Export the final firmware's flash ring
+
+```sh
+python tools/collect_export.py \
+  --port /dev/cu.usbserial-0001 \
+  --output data/ring_export.csv \
   --delete-after-export
 ```
 
-The collector uses `pyserial`, included in PlatformIO's bundled Python.
+The collector uses `pyserial` from `requirements.txt`.
 It writes a temporary file and only replaces the target CSV when received row
 count matches the device's `OK+EXPORT` count. `--delete-after-export` is
 optional: after that verified CSV save, it sends the firmware's two-step delete
 command. Without the flag, the ESP32 data remains intact.
+
+## License
+
+Code and teaching material are available under the [MIT License](LICENSE).

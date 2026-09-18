@@ -28,7 +28,7 @@ You should see a new `LOG` line every two seconds. Send `AT+LOG,OFF` when done.
 
 ## Part 3 — Look at data
 
-Open `data/heatgun_box_002.csv`. It has three columns:
+Open `data/supplied_training_data.csv`. It has three columns:
 
 ```text
 sequence,temp_c,humidity_pct
