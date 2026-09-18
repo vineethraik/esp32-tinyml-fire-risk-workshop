@@ -37,7 +37,7 @@ This notebook is a complete beginner-friendly workshop for approximately **5.5�
 By the end, you will understand and demonstrate this complete path:
 
 ```text
-DHT22 sensor → ESP32 serial data → JavaScript CSV collector
+DHT22 sensor → ESP32 serial data → Python CSV collector
              → labels → 10-reading windows → neural-network training
              → INT8 model weights → ESP32 inference → 2-of-3 risk vote
 ```
@@ -51,7 +51,7 @@ DHT22 sensor → ESP32 serial data → JavaScript CSV collector
 | --- | --- | --- |
 | 00:00–00:30 | AI and ML basics | Explain data, labels, training, and inference |
 | 00:30–01:15 | ESP32 and DHT22 | Read temperature and humidity |
-| 01:15–01:50 | JavaScript collector | Save serial readings into CSV |
+| 01:15–01:50 | Python collector | Save serial readings into CSV |
 | 01:50–02:20 | Inspect and label | Create normal/elevated/high examples |
 | 02:20–02:35 | Break | — |
 | 02:35–03:45 | Build and train model | Train a `20 → 12 → 3` neural network |
@@ -79,7 +79,7 @@ Later extensions may use an MQ-2 gas sensor, flame sensor, LED, and buzzer. They
 - Python 3.11 or newer
 - JupyterLab
 - NumPy and pandas
-- Node.js 18 or newer for the simple serial-to-CSV collector
+- pyserial for the simple serial-to-CSV collector
 - VS Code with PlatformIO, or PlatformIO Core
 - CP2102 USB driver if the board does not appear as a serial port
 
@@ -217,68 +217,48 @@ DATA,27.90,54.10
 ```
 """),
     markdown(r"""
-## 4. Part B — JavaScript serial-to-CSV collector
+## 4. Part B — Python serial-to-CSV collector
 
-Create a new folder and install the serial package:
-
-```sh
-mkdir student-collector
-cd student-collector
-npm init -y
-npm install serialport @serialport/parser-readline
-```
-
-Save this as `collect.js`:
-
-```javascript
-const fs = require("fs");
-const { SerialPort } = require("serialport");
-const { ReadlineParser } = require("@serialport/parser-readline");
-
-const portName = process.argv[2];
-const outputName = process.argv[3] || "dht_readings.csv";
-
-if (!portName) {
-  console.error("Usage: node collect.js <serial-port> [output.csv]");
-  process.exit(1);
-}
-
-const newFile = !fs.existsSync(outputName);
-const output = fs.createWriteStream(outputName, { flags: "a" });
-if (newFile) output.write("timestamp,temp_c,humidity_pct,label\n");
-
-const port = new SerialPort({ path: portName, baudRate: 115200 });
-const lines = port.pipe(new ReadlineParser({ delimiter: "\n" }));
-
-lines.on("data", (rawLine) => {
-  const line = rawLine.trim();
-  const fields = line.split(",");
-  if (fields[0] !== "DATA" || fields.length !== 3) return;
-
-  const temperature = Number(fields[1]);
-  const humidity = Number(fields[2]);
-  if (!Number.isFinite(temperature) || !Number.isFinite(humidity)) return;
-
-  const row = `${new Date().toISOString()},${temperature},${humidity},\n`;
-  output.write(row);
-  console.log(row.trim());
-});
-```
-
-Run it:
+The collector is `tools/collect_serial_csv.py`. It uses pyserial, already included in `requirements.txt`. Run:
 
 ```sh
-node collect.js /dev/cu.usbserial-0001 my_session.csv
+python tools/collect_serial_csv.py \
+  --port /dev/cu.usbserial-0001 \
+  --output data/raw/my_session.csv \
+  --count 100
 ```
 
-Windows ports look like `COM3`. Stop collection with `Ctrl+C`.
+Windows ports look like `COM3`. Omit `--count` to collect until `Ctrl+C`.
 
-Why each check matters:
+The important parsing logic is intentionally small:
 
-- Ignore boot messages and errors that do not begin with `DATA`.
-- Convert strings to numbers and reject invalid values.
-- Add the PC time because the first teaching firmware sends only sensor values.
-- Leave `label` empty. A human labels the data in the next step.
+```python
+fields = line.strip().split(",")
+if len(fields) == 3 and fields[0] == "DATA":
+    sequence, temperature, humidity = "", fields[1], fields[2]
+else:
+    return None
+
+temperature_value = float(temperature)
+humidity_value = float(humidity)
+```
+
+The complete script also:
+
+- ignores ESP32 boot messages and malformed lines;
+- accepts the final firmware's `LOG,sequence,temp,humidity` format;
+- adds a UTC timestamp from the PC;
+- flushes each valid row so a sudden stop loses at most the current line;
+- refuses to overwrite an existing raw CSV unless `--append` is explicit.
+
+Its raw CSV has no label column:
+
+```csv
+timestamp_utc,sequence,temp_c,humidity_pct
+2026-09-18T10:30:02+00:00,,27.80,54.20
+```
+
+Labels belong in a later working copy, not in the immutable raw capture.
 """),
     markdown(r"""
 ## 5. Part C — Inspect the supplied real dataset
@@ -501,7 +481,18 @@ print("\n".join(header_path.read_text().splitlines()[:14]))
     markdown(r"""
 ## 11. Part I — ESP32 inference integration
 
-The final firmware in `src/main.cpp`:
+The repository keeps each ESP32 learning step separately:
+
+| Folder | Lesson |
+| --- | --- |
+| `firmware/01_dht_serial` | sensor → clean serial lines |
+| `firmware/02_flash_storage` | append readings to local flash and export them |
+| `firmware/03_tinyml_inference` | ten-reading window → model → vote |
+| repository root | final combined ring logger + export + inference |
+
+Build a small stage with `pio run --project-dir firmware/01_dht_serial`. The final combined firmware remains in `src/main.cpp`.
+
+The inference stage:
 
 1. stores the newest ten valid DHT readings in a circular history;
 2. puts them back into chronological order;
@@ -525,7 +516,14 @@ votedHighRisk = highRiskVoteCount == 3 && highVotes >= 2;
 Build and flash manually only when your board is connected:
 
 ```sh
-pio run
+pio run --project-dir firmware/01_dht_serial --target upload
+python tools/collect_serial_csv.py --port /dev/cu.usbserial-0001 \
+  --output data/raw/my_session.csv --count 100
+
+pio run --project-dir firmware/03_tinyml_inference --target upload
+pio device monitor --baud 115200 --project-dir firmware/03_tinyml_inference
+
+# Final combined system
 pio run --target upload
 pio device monitor --baud 115200
 ```
