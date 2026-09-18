@@ -15,6 +15,7 @@ small neural network on their PC, export it, and run it on an ESP32.
 - [Demo runbook](docs/DEMO_RUNBOOK.md) — full working demo, step by step.
 - [Setup and materials](docs/SETUP.md) — hardware, software, pre-session checks.
 - [Simple ML concepts](docs/ML_CONCEPTS.md) — plain-language explanations.
+- [Complete self-learning notebook](notebooks/complete_tinyml_fire_risk_workshop.ipynb) — the full workshop from requirements to conclusion, with executable training code.
 
 The minimum live hardware demo needs only a NodeMCU ESP32S V1.1 and DHT22 V182.
 MQ-2 and flame sensing are later extensions, not prerequisites for this lesson.
