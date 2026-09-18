@@ -1,0 +1,41 @@
+{
+  "source_file": "data/heatgun_box_002.csv",
+  "source_rows": 31346,
+  "measured_windows": 31307,
+  "synthetic_windows": 2400,
+  "windows": 33707,
+  "synthetic_profiles": [
+    "gradual_rise",
+    "late_rise",
+    "two_stage_rise"
+  ],
+  "structure": [
+    20,
+    12,
+    3
+  ],
+  "class_counts": {
+    "NORMAL": 30573,
+    "ELEVATED_THERMAL_RISK": 1773,
+    "HIGH_THERMAL_RISK": 1361
+  },
+  "training_accuracy": 0.9976562731776782,
+  "training_confusion_matrix": [
+    [
+      30536,
+      37,
+      0
+    ],
+    [
+      0,
+      1731,
+      42
+    ],
+    [
+      0,
+      0,
+      1361
+    ]
+  ],
+  "warning": "One controlled run plus synthetic teaching augmentation; training-set result only, not real-world accuracy."
+}

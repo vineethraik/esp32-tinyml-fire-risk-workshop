@@ -1,0 +1,27 @@
+{
+  "source_rows": 3539,
+  "windows": 3499,
+  "class_counts": {
+    "NORMAL": 2765,
+    "ELEVATED_THERMAL_RISK": 573,
+    "HIGH_THERMAL_RISK": 161
+  },
+  "training_confusion_matrix": [
+    [
+      2731,
+      34,
+      0
+    ],
+    [
+      1,
+      558,
+      14
+    ],
+    [
+      0,
+      0,
+      161
+    ]
+  ],
+  "warning": "Training-set fit only. Do not treat this as real-world accuracy."
+}

@@ -1,0 +1,7 @@
+# Required for the PC training activity and CSV importer.
+numpy>=1.26
+pandas>=2.0
+pyserial>=3.5
+
+# Optional: only needed to open the included notebooks.
+jupyterlab>=4.0

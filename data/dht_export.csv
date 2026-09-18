@@ -1,0 +1,9 @@
+sequence,uptime_ms,temp_c,humidity_pct,mq2_adc,flame_state
+0,4015,26.70,51.50,nan,na
+1,6024,26.70,51.40,nan,na
+2,8024,26.70,51.40,nan,na
+3,10024,26.70,51.40,nan,na
+4,12024,26.70,51.30,nan,na
+5,14024,26.70,51.30,nan,na
+6,16024,26.70,51.30,nan,na
+7,168,26.70,51.30,nan,na
