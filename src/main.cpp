@@ -3,7 +3,7 @@
 #include <Preferences.h>
 #include <esp_err.h>
 #include <esp_partition.h>
-#include "thermal_risk_model.h"
+#include "thermal_risk_inference.h"
 
 // Final workshop firmware
 // -----------------------
@@ -78,19 +78,9 @@ bool riskLogEnabled = false;
 bool deleteArmed = false;
 uint32_t deleteArmedAtMs = 0;
 
-// TinyML uses fixed-point history copied from the same records written to
-// flash. This ensures the logged data and inference input agree.
-int16_t riskTemperatureHistory[10]{};
-uint16_t riskHumidityHistory[10]{};
-size_t riskHistoryIndex = 0;
-size_t riskHistoryCount = 0;
-uint8_t highRiskVotes[3]{};
-size_t highRiskVoteIndex = 0;
-size_t highRiskVoteCount = 0;
-uint8_t latestRiskClass = 0;
-float latestRiskConfidence = 0.0f;
-bool riskReady = false;
-bool votedHighRisk = false;
+// The same small inference library is used by stage 3 and the final logger.
+// The logger feeds it values from the record it just wrote to flash.
+ThermalRiskInference riskModel;
 
 // Fixed command storage avoids heap allocation and String fragmentation in the
 // long-running final firmware.
@@ -367,26 +357,18 @@ void printRecord(const __FlashStringHelper *prefix, const SampleRecord &record) 
   Serial.println();
 }
 
-const __FlashStringHelper *riskLabel(uint8_t riskClass) {
-  // Class index order must match the Python LABELS list and generated model.
-  switch (riskClass) {
-    case 0: return F("NORMAL");
-    case 1: return F("ELEVATED_THERMAL_RISK");
-    default: return F("HIGH_THERMAL_RISK");
-  }
-}
-
 void printRisk(uint32_t sequence) {
   // Confidence is the largest Softmax score. It is not a guarantee that the
   // prediction is correct.
+  const RiskResult &result = riskModel.latest();
   Serial.print(F("RISK,"));
   Serial.print(sequence);
   Serial.print(',');
-  Serial.print(riskLabel(latestRiskClass));
+  Serial.print(ThermalRiskInference::label(result.riskClass));
   Serial.print(',');
-  Serial.print(latestRiskConfidence, 3);
+  Serial.print(result.confidence, 3);
   Serial.print(F(",voted_high="));
-  Serial.println(votedHighRisk ? 1 : 0);
+  Serial.println(result.votedHigh ? 1 : 0);
 }
 
 void runRiskInference(const SampleRecord &record) {
@@ -397,80 +379,11 @@ void runRiskInference(const SampleRecord &record) {
     return;
   }
 
-  // Insert into circular history, then advance to the next/oldest slot.
-  riskTemperatureHistory[riskHistoryIndex] = record.temperatureCx100;
-  riskHumidityHistory[riskHistoryIndex] = record.humidityPctX100;
-  riskHistoryIndex = (riskHistoryIndex + 1) % 10;
-  riskHistoryCount = min(riskHistoryCount + 1, static_cast<size_t>(10));
-  if (riskHistoryCount < 10) {
-    return;
-  }
-
-  // Rebuild chronological [temp, humidity] pairs in the exact feature order
-  // used by the Python training script.
-  float input[thermal_risk_model::kInputSize];
-  for (size_t sample = 0; sample < 10; ++sample) {
-    const size_t index = (riskHistoryIndex + sample) % 10;
-    input[sample * 2] = static_cast<float>(riskTemperatureHistory[index]) / 100.0f;
-    input[sample * 2 + 1] = static_cast<float>(riskHumidityHistory[index]) / 100.0f;
-  }
-  // Apply the same per-feature normalization learned during training.
-  for (size_t i = 0; i < thermal_risk_model::kInputSize; ++i) {
-    input[i] = (input[i] - thermal_risk_model::kInputMean[i]) /
-               thermal_risk_model::kInputScale[i];
-  }
-
-  // First dense layer plus ReLU. INT8 storage is dequantized by multiplying
-  // each value by the scale saved beside its array.
-  float hidden[thermal_risk_model::kHiddenSize];
-  for (size_t unit = 0; unit < thermal_risk_model::kHiddenSize; ++unit) {
-    hidden[unit] = thermal_risk_model::kDense1Bias[unit] *
-                   thermal_risk_model::kDense1BiasScale;
-    for (size_t i = 0; i < thermal_risk_model::kInputSize; ++i) {
-      hidden[unit] += input[i] * thermal_risk_model::kDense1Weights[i][unit] *
-                      thermal_risk_model::kDense1WeightScale;
-    }
-    hidden[unit] = max(hidden[unit], 0.0f);
-  }
-
-  // Second dense layer returns three raw class scores.
-  float logits[thermal_risk_model::kOutputSize];
-  float maximum = -INFINITY;
-  for (size_t output = 0; output < thermal_risk_model::kOutputSize; ++output) {
-    logits[output] = thermal_risk_model::kDense2Bias[output] *
-                     thermal_risk_model::kDense2BiasScale;
-    for (size_t unit = 0; unit < thermal_risk_model::kHiddenSize; ++unit) {
-      logits[output] += hidden[unit] * thermal_risk_model::kDense2Weights[unit][output] *
-                        thermal_risk_model::kDense2WeightScale;
-    }
-    maximum = max(maximum, logits[output]);
-  }
-  // Stable Softmax converts scores into probabilities that sum to one.
-  float total = 0.0f;
-  for (float &logit : logits) {
-    logit = expf(logit - maximum);
-    total += logit;
-  }
-  // Choose the largest class probability.
-  latestRiskClass = 0;
-  latestRiskConfidence = logits[0] / total;
-  for (size_t output = 1; output < thermal_risk_model::kOutputSize; ++output) {
-    const float probability = logits[output] / total;
-    if (probability > latestRiskConfidence) {
-      latestRiskClass = output;
-      latestRiskConfidence = probability;
-    }
-  }
-  riskReady = true;
-
-  // Store HIGH as 1 and every other class as 0. votedHighRisk becomes true
-  // only when at least two of the latest three complete windows are HIGH.
-  highRiskVotes[highRiskVoteIndex] = latestRiskClass == 2 ? 1 : 0;
-  highRiskVoteIndex = (highRiskVoteIndex + 1) % 3;
-  highRiskVoteCount = min(highRiskVoteCount + 1, static_cast<size_t>(3));
-  uint8_t highVotes = 0;
-  for (uint8_t vote : highRiskVotes) highVotes += vote;
-  votedHighRisk = highRiskVoteCount == 3 && highVotes >= 2;
+  // A stored hundredth is converted back to the same units used in training.
+  riskModel.addReading(static_cast<float>(record.temperatureCx100) / 100.0f,
+                       static_cast<float>(record.humidityPctX100) / 100.0f);
+  if (!riskModel.ready()) return;
+  riskModel.predict();
   if (riskLogEnabled) printRisk(recordSequence(record));
 }
 
@@ -615,14 +528,15 @@ void handleCommand(const char *command) {
     Serial.println(F("OK+LOG"));
   } else if (strcmp(command, "AT+RISK") == 0) {
     Serial.print(F("ACK+RISK,ready="));
-    Serial.print(riskReady ? 1 : 0);
-    if (riskReady) {
+    Serial.print(riskModel.hasPrediction() ? 1 : 0);
+    if (riskModel.hasPrediction()) {
+      const RiskResult &result = riskModel.latest();
       Serial.print(F(",label="));
-      Serial.print(riskLabel(latestRiskClass));
+      Serial.print(ThermalRiskInference::label(result.riskClass));
       Serial.print(F(",confidence="));
-      Serial.print(latestRiskConfidence, 3);
+      Serial.print(result.confidence, 3);
       Serial.print(F(",voted_high="));
-      Serial.print(votedHighRisk ? 1 : 0);
+      Serial.print(result.votedHigh ? 1 : 0);
     }
     Serial.println();
     Serial.println(F("OK+RISK"));

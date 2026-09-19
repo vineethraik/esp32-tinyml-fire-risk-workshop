@@ -30,10 +30,14 @@ required workshop build.
 
 1. ESP32 reads DHT22 every two seconds and prints serial data.
 2. `tools/collect_serial_csv.py` saves raw CSV on the student's PC.
-3. Students make a separate copy for manual labels.
+3. `tools/prepare_labeling_windows.py` makes a separate CSV of at most 90
+   ten-reading windows from at most 100 valid readings. Students manually label
+   these windows; the first complete window is a warm-up example.
 4. The workshop uses `data/supplied_training_data.csv` for repeatable training.
 5. `tools/train_heatgun_neural_net.py` creates ten-sample windows, teaching
    labels, clearly marked synthetic rises, and a `20 → 12 → 3` dense network.
+   It can optionally add completed student-labeled windows; blank labels are
+   ignored. The repeatable supplied-data path remains the default.
 6. `tools/export_dense_int8_header.py` converts weights to an ESP32 C++ header.
 7. ESP32 performs offline inference and a 2-of-3 high-risk vote.
 

@@ -156,7 +156,8 @@ Verify the printed pin order on the exact DHT22 module before applying power.
 │   └── 03_tinyml_inference/    # Ten-reading model and voting lesson
 ├── src/main.cpp                # Final combined firmware
 ├── include/
-│   └── thermal_risk_model.h    # Generated INT8 model weights
+│   ├── thermal_risk_model.h    # Generated INT8 model weights
+│   └── thermal_risk_inference.h # Shared small inference library
 ├── notebooks/
 │   └── complete_tinyml_fire_risk_workshop.ipynb
 ├── data/
@@ -368,8 +369,28 @@ It contains 31,347 captured DHT rows with:
 sequence,temp_c,humidity_pct
 ```
 
-The notebook demonstrates a separate manual-labeling copy. The supplied model
-then uses consistent teaching labels:
+The notebook creates a separate window-labeling CSV. Each editable row is a
+ten-reading window (20 model inputs), not one sensor reading. The tool uses at
+most 100 valid readings and produces at most 90 label rows; the first complete
+window is a warm-up example. Raw data stays unchanged.
+
+```sh
+python tools/prepare_labeling_windows.py \
+  --input data/supplied_training_data.csv \
+  --output data/imports/student_window_labels.csv
+```
+
+To label a later part of the recording, add `--start-row 30000` (zero-based
+valid-reading index). Fill only the `label` column with one of the exact names
+below; blank rows are ignored. Optional training with completed student labels:
+
+```sh
+python tools/train_heatgun_neural_net.py \
+  --student-windows data/imports/student_window_labels.csv
+```
+
+These labels supplement the supplied teaching data. Without the option, the
+script still uses its repeatable teaching labels:
 
 | Label | Teaching meaning |
 | --- | --- |
@@ -463,8 +484,10 @@ model.
 
 ## Firmware stage 3: TinyML inference
 
-This stage contains only DHT reading, a ten-reading window, neural inference,
-and 2-of-3 voting.
+This stage shows the short device flow: read DHT, call `model.addReading()`,
+wait until `model.ready()`, then call `model.predict()`. The reusable local
+library in `include/thermal_risk_inference.h` contains windowing, neural-network
+math, and 2-of-3 voting. The final firmware uses that same library.
 
 ```sh
 pio run -e 03_tinyml_inference

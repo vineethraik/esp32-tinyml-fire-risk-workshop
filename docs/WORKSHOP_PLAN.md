@@ -17,8 +17,8 @@ fire-safety product.
 | 00:25–01:00 | AI and ML basics | Explain data, label, model, training, and inference. |
 | 01:00–01:45 | ESP32 and DHT22 | Wire sensor, flash starter firmware, see temperature/humidity. |
 | 01:45–02:00 | Break | — |
-| 02:00–02:45 | Data story | Open the supplied CSV; find normal, warming, and high-temperature sections. |
-| 02:45–03:35 | Train on PC | Run the neural-network script; inspect labels and report. |
+| 02:00–02:45 | Data story | Find normal/warming sections; turn up to 100 readings into 90 windows and label some. |
+| 02:45–03:35 | Train on PC | Run the neural-network script; optionally add student labels; inspect the report. |
 | 03:35–04:05 | TinyML export | Explain INT8 weights; generate the ESP32 model header. |
 | 04:05–04:50 | ESP32 inference demo | Flash, use `AT+RISK`, then show controlled warming. |
 | 04:50–05:25 | Reflection and limits | Discuss false alarms, missing sensors, validation, ethics, safety. |
@@ -50,7 +50,8 @@ finding from the CSV.
 ## Evidence of success
 
 - Student can say the difference between training and inference.
-- Student can point to a 10-reading input window in the dataset.
+- Student can point to a 10-reading input window and explain why 100 readings
+  become 90 label rows in this exercise.
 - Student runs training and reads the three output labels.
 - ESP32 answers `AT+RISK` after ten readings.
 - Student names at least two reasons the demo is not production-ready.

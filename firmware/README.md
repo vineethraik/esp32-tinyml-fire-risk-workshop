@@ -11,6 +11,10 @@ separate environment in VS Code's PlatformIO **PROJECT TASKS** sidebar.
 | `03_tinyml_inference` | Keep ten readings and run the neural network | `RISK,label,confidence,voted_high,inference_us` |
 | repository root | Final combined firmware | 1 MiB ring logger + export + TinyML inference |
 
+Both inference stages use `include/thermal_risk_inference.h`. Start with the
+short `03_tinyml_inference/src/main.cpp`; inspect the local library only when
+you want to see normalization, dense layers, Softmax, and voting.
+
 Build one stage from the repository root:
 
 ```sh

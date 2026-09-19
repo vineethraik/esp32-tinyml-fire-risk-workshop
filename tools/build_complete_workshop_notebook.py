@@ -313,7 +313,8 @@ display(summary)
     markdown(r"""
 ## 6. Part D — Manual labeling
 
-Make a working copy and add one label per row or selected region:
+Label a **window of ten readings**, not a single reading. A window lets you
+judge whether temperature and humidity are changing. Use these class names:
 
 - `NORMAL`: ordinary room condition.
 - `ELEVATED_THERMAL_RISK`: warming trend or unusually warm condition.
@@ -321,17 +322,32 @@ Make a working copy and add one label per row or selected region:
 
 Labels are human decisions, not sensor measurements. Keep raw and labelled files separate.
 
-The next cell creates a small labeling template. Open the saved CSV in a spreadsheet and fill its `label` column. It does not modify the raw capture.
+The next cell takes at most **100 readings** from the supplied CSV and makes
+**90 windows**. We skip the first complete window as a warm-up example, then
+slide forward one reading at a time. Each row has a short summary and the 20
+model inputs. Open the new CSV and fill only its `label` column. The raw CSV
+stays unchanged. If you captured your own data, change `label_source` below.
+The first 100 supplied readings may all look normal; choose a later
+`label_start_row` after inspecting the summary if you want a warming segment.
 """),
     code(r"""
-label_template = data.loc[:, ["sequence", "temp_c", "humidity_pct"]].head(100).copy()
-label_template["label"] = ""
+import prepare_labeling_windows as labeling
 
-template_path = PROJECT_ROOT / "artifacts" / "student_labeling_template.csv"
-label_template.to_csv(template_path, index=False)
-
-print("Created:", template_path)
-display(label_template.head())
+label_source = PROJECT_ROOT / "data" / "supplied_training_data.csv"
+label_start_row = 0  # Zero-based valid-reading index; change for a later segment.
+template_path = PROJECT_ROOT / "data" / "imports" / "student_window_labels.csv"
+template_path.parent.mkdir(parents=True, exist_ok=True)
+if template_path.exists():
+    print("Using existing label CSV (your edits are safe):", template_path)
+    label_template = pd.read_csv(template_path, keep_default_na=False)
+else:
+    label_template, skipped_rows, used_readings = labeling.prepare_windows(
+        pd.read_csv(label_source), start_row=label_start_row
+    )
+    label_template.to_csv(template_path, index=False)
+    print(f"Created {len(label_template)} windows from {used_readings} readings: {template_path}")
+    print("Skipped invalid readings:", skipped_rows)
+display(label_template[["window_id", "start_sequence", "end_sequence", "temp_change_c", "label"]].head())
 """),
     markdown(r"""
 ### Labels used by the supplied teaching model
@@ -393,11 +409,18 @@ Our model is deliberately small:
 - Softmax converts scores into values that add to one.
 
 During training, wrong predictions adjust weights and biases. We do not manually write the final pattern rules.
+
+After editing and saving the window-label CSV, set `use_student_labels = True`
+below. The training script then imports every completed label as an extra
+example. Blank label rows are ignored. Leave it `False` for the repeatable
+supplied-data demonstration. Student labels supplement the teaching data; 90
+overlapping windows are not 90 independent field observations.
 """),
     code(r"""
 # Full training run. On this project computer it takes roughly 10–20 seconds.
+use_student_labels = False  # Set True only after filling and saving the label CSV.
 start = time.perf_counter()
-training.main()
+training.main(template_path if use_student_labels else None)
 training_seconds = time.perf_counter() - start
 
 report_path = PROJECT_ROOT / "artifacts" / "heatgun_dense_nn_report.json"
@@ -503,7 +526,23 @@ In PlatformIO **PROJECT TASKS**, expand one environment and click **General →
 Build**, **Upload**, or **Monitor**. Only one firmware runs on the board at a
 time. The generic bottom-bar buttons use `04_final_combined` by default.
 
-The inference stage:
+The student-facing inference stage now calls a small shared local library:
+
+```cpp
+model.addReading(temperatureC, humidity);
+if (model.ready()) {
+  const RiskResult &result = model.predict();
+  Serial.println(ThermalRiskInference::label(result.riskClass));
+}
+```
+
+Open `firmware/03_tinyml_inference/src/main.cpp` to follow the simple device
+flow. Open `include/thermal_risk_inference.h` only when you want to inspect the
+neural-network calculation. The generated `include/thermal_risk_model.h` holds
+learned weights and normalization values; both firmware stages use the same
+library and model.
+
+Inside the library, inference:
 
 1. stores the newest ten valid DHT readings in a circular history;
 2. puts them back into chronological order;
@@ -512,17 +551,8 @@ The inference stage:
 5. saves the latest class and confidence;
 6. performs a 2-of-3 vote for high risk.
 
-The vote prevents one unusual window from immediately becoming a high-risk alert:
-
-```cpp
-highRiskVotes[highRiskVoteIndex] = latestRiskClass == 2 ? 1 : 0;
-
-uint8_t highVotes = 0;
-for (size_t i = 0; i < highRiskVoteCount; ++i) {
-  highVotes += highRiskVotes[i];
-}
-votedHighRisk = highRiskVoteCount == 3 && highVotes >= 2;
-```
+The vote prevents one unusual window from immediately becoming a high-risk
+alert. The library does not count repeated calls to `predict()` as new votes.
 
 Build and flash manually only when your board is connected:
 

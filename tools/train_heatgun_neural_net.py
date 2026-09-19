@@ -14,6 +14,7 @@ pipeline here:
 This is a classroom thermal-risk model, not a validated fire detector.
 """
 
+import argparse
 import json
 from pathlib import Path
 
@@ -46,6 +47,35 @@ LEARNING_RATE = 0.003
 # A fixed seed makes every workshop run repeatable.
 RANDOM_SEED = 42
 SYNTHETIC_WINDOWS_PER_RISK_CLASS = 1200
+
+
+def load_student_windows(path):
+    """Read only completed labels from the small student window CSV.
+
+    Blank labels are okay while a team works through its 90 rows. Every used
+    row must contain the same 20 features, in the same order, as ESP32 inference.
+    """
+    columns = [f"{name}_{index}" for index in range(WINDOW_SAMPLES)
+               for name in ("temp_c", "humidity_pct")]
+    frame = pd.read_csv(path, keep_default_na=False)
+    missing = [name for name in [*columns, "label"] if name not in frame.columns]
+    if missing:
+        raise ValueError(f"Student label CSV is missing: {', '.join(missing)}")
+    if len(frame) > 90:
+        raise ValueError("Student label CSV must contain at most 90 windows")
+
+    labels = frame["label"].astype(str).str.strip().str.upper()
+    invalid = sorted(set(labels) - {"", *LABELS})
+    if invalid:
+        raise ValueError(f"Unknown student label(s): {', '.join(invalid)}")
+    selected = frame.loc[labels != ""]
+    if selected.empty:
+        raise ValueError("Fill at least one student label before using --student-windows")
+    features = selected[columns].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=np.float32)
+    if not np.isfinite(features).all():
+        raise ValueError("A labeled student window has a missing/invalid sensor feature")
+    targets = np.asarray([LABELS.index(label) for label in labels[labels != ""]], dtype=np.int8)
+    return features, targets
 
 
 def make_training_data(frame):
@@ -151,7 +181,7 @@ def softmax(logits):
     return exponentials / exponentials.sum(axis=1, keepdims=True)
 
 
-def main():
+def main(student_windows=None):
     # Remove incomplete sensor rows before constructing fixed-size windows.
     print(f"Loading sensor data from {SOURCE}...", flush=True)
     frame = pd.read_csv(SOURCE).dropna()
@@ -162,7 +192,16 @@ def main():
     measured_X, measured_y = make_training_data(frame)
     rng = np.random.default_rng(RANDOM_SEED)
     X, y, synthetic_metadata = add_synthetic_risks(measured_X, measured_y, rng)
-    save_augmented_windows(X, y, len(measured_X), synthetic_metadata)
+    metadata = list(synthetic_metadata)
+    student_count = 0
+    if student_windows is not None:
+        student_X, student_y = load_student_windows(student_windows)
+        student_count = len(student_y)
+        X = np.vstack((X, student_X))
+        y = np.concatenate((y, student_y))
+        metadata.extend([("student", "manual_label", LABELS[label]) for label in student_y])
+        print(f"Added {student_count} manually labeled student windows", flush=True)
+    save_augmented_windows(X, y, len(measured_X), metadata)
 
     # Standardization gives every input position roughly comparable numerical
     # scale: normalized_value = (raw_value - mean) / standard_deviation.
@@ -266,6 +305,9 @@ def main():
         "training_confusion_matrix": confusion,
         "warning": "One controlled run plus synthetic teaching augmentation; training-set result only, not real-world accuracy.",
     }
+    if student_windows is not None:
+        report["student_windows"] = student_count
+        report["student_labels_file"] = str(student_windows)
     # The model JSON contains everything needed to reproduce inference:
     # feature order, normalization constants, learned weights, and biases.
     model = {
@@ -290,4 +332,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--student-windows", type=Path,
+                        help="Optional completed 90-window label CSV")
+    main(parser.parse_args().student_windows)

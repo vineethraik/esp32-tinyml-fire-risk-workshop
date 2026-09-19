@@ -25,7 +25,11 @@ time-series window.
 
 Open the CSV before running training. Have learners identify what each column
 means and notice that every row is only a measurement. Labels are a human
-decision layered on top of measurements.
+decision layered on top of measurements. Run the window-label tool: at most 100
+readings produce 90 ten-reading windows because the first complete window is
+reserved for a warm-up. Have teams label a few rows in the separate CSV and
+point to the start/end temperature and the full 20 input values. The first 100
+supplied readings may be normal; select a later region for warming examples.
 
 ### 4. Train, then separate training from inference
 
@@ -35,7 +39,10 @@ Say exactly:
 > prediction step repeated on ESP32.
 
 Run the script. Point out that the model's reported score is a training score,
-not a real safety guarantee.
+not a real safety guarantee. Run once with supplied teaching labels, then
+optionally with `--student-windows data/imports/student_window_labels.csv`.
+Show that blank labels are skipped and manually labeled rows are extra training
+examples, not an independent test set.
 
 ### 5. Make tiny model visible
 

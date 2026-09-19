@@ -37,7 +37,29 @@ sequence,temp_c,humidity_pct
 Find a calm region and a warming region. Ask: “Would one fixed temperature
 threshold notice the warming early?”
 
-## Part 4 — Train a tiny neural network
+## Part 4 — Make windows and label them
+
+One sensor reading does not show a trend. From the repository root, make a
+separate labeling CSV:
+
+```sh
+.venv-ml311/bin/python tools/prepare_labeling_windows.py \
+  --input data/supplied_training_data.csv \
+  --output data/imports/student_window_labels.csv
+```
+
+It takes at most 100 valid readings. A ten-reading sliding window would make
+91 windows; we keep the first as a warm-up and give you the remaining 90 to
+label. Open the output CSV. Each row has a summary plus the 20 numbers the
+model receives. Fill only `label` with `NORMAL`, `ELEVATED_THERMAL_RISK`, or
+`HIGH_THERMAL_RISK`. You may leave some blank. Do not edit the raw CSV.
+
+The first 100 readings may all be normal. To choose a later 100-reading region,
+add `--start-row 30000` or another zero-based valid-reading position. If the
+output file already exists, the tool refuses to overwrite your labels: choose
+a new output name, or use `--overwrite` only when you mean to replace it.
+
+## Part 5 — Train a tiny neural network
 
 From the repository root, run:
 
@@ -45,11 +67,21 @@ From the repository root, run:
 .venv-ml311/bin/python tools/train_heatgun_neural_net.py
 ```
 
+For an optional run using your completed labels as extra examples, use:
+
+```sh
+.venv-ml311/bin/python tools/train_heatgun_neural_net.py \
+  --student-windows data/imports/student_window_labels.csv
+```
+
+Blank label rows are skipped. The supplied teaching data still provides most
+examples; 90 overlapping windows are not 90 independent real-world tests.
+
 Read the printed report. It tells you how many measured and synthetic windows
 were used. Open `artifacts/heatgun_augmented_windows.csv` and find the `source`
 and `profile` columns. Never call synthetic data “real measurements.”
 
-## Part 5 — Export for ESP32
+## Part 6 — Export for ESP32
 
 ```sh
 .venv-ml311/bin/python tools/export_dense_int8_header.py
@@ -59,7 +91,7 @@ pio run --target upload
 The exporter writes `include/thermal_risk_model.h`. The ESP32 firmware reads
 this file when it is compiled.
 
-## Part 6 — Ask ESP32 for its prediction
+## Part 7 — Ask ESP32 for its prediction
 
 Wait about 20 seconds after boot, then send:
 
@@ -77,7 +109,7 @@ OK+RISK
 Use `AT+RISK,ON` for one result every sensor reading. `voted_high=1` requires
 two high-risk results from the newest three windows.
 
-## Part 7 — Reflect
+## Part 8 — Reflect
 
 Write short answers:
 
