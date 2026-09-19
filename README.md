@@ -181,12 +181,14 @@ combined firmware as separate clickable environments. The projects under
 
 ## Quick start
 
-### 1. Clone using SSH
+### 1. Clone the public repository using HTTPS
 
 ```sh
-git clone git@github.com:vineethraik/esp32-tinyml-fire-risk-workshop.git
+git clone https://github.com/vineethraik/esp32-tinyml-fire-risk-workshop.git
 cd esp32-tinyml-fire-risk-workshop
 ```
+
+No GitHub account or SSH-key setup is required to clone this public repository.
 
 Repository:
 [github.com/vineethraik/esp32-tinyml-fire-risk-workshop](https://github.com/vineethraik/esp32-tinyml-fire-risk-workshop)

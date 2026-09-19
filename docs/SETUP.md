@@ -25,7 +25,7 @@ If using a bare DHT22 rather than a module with an onboard resistor, add a
 ## PC setup
 
 ```sh
-git clone <repository-url>
+git clone https://github.com/vineethraik/esp32-tinyml-fire-risk-workshop.git
 cd esp32-tinyml-fire-risk-workshop
 python3 -m venv .venv-ml311
 .venv-ml311/bin/pip install -r requirements.txt

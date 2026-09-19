@@ -99,7 +99,7 @@ Never pull DHT22 DATA to 5 V. If the module already has a pull-up resistor, an e
 Run these commands once from a terminal:
 
 ```sh
-git clone git@github.com:vineethraik/esp32-tinyml-fire-risk-workshop.git
+git clone https://github.com/vineethraik/esp32-tinyml-fire-risk-workshop.git
 cd esp32-tinyml-fire-risk-workshop
 python3 -m venv .venv-ml311
 source .venv-ml311/bin/activate        # macOS/Linux
