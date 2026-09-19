@@ -175,8 +175,9 @@ Verify the printed pin order on the exact DHT22 module before applying power.
 └── requirements.txt
 ```
 
-The three `firmware/` projects are small teaching stages. The root PlatformIO
-project is the final combined 1 MiB ring logger, exporter, and inference system.
+The root PlatformIO project exposes all three teaching stages and the final
+combined firmware as separate clickable environments. The projects under
+`firmware/` remain independently buildable for instructors who want them.
 
 ## Quick start
 
@@ -235,6 +236,29 @@ Typical ports:
 
 The exact name may differ.
 
+### 5. Use the PlatformIO buttons
+
+Open the repository root—not an individual `firmware/` folder—in VS Code.
+Select the PlatformIO icon, expand **PROJECT TASKS**, and choose one environment:
+
+| PlatformIO environment | Firmware shown in class |
+| --- | --- |
+| `01_dht_serial` | Basic DHT22 serial readings |
+| `02_flash_storage` | LittleFS storage and AT commands |
+| `03_tinyml_inference` | Small neural-network inference lesson |
+| `04_final_combined` | Final ring logger, export, inference, and voting |
+
+Inside the selected environment, click:
+
+1. **General → Build** to compile;
+2. **General → Upload** to flash the connected ESP32;
+3. **General → Monitor** to open serial at 115200 baud.
+
+Only one firmware runs on the board at a time. The root project's default
+environment is `04_final_combined`, so the generic bottom-bar Build and Upload
+buttons target the final firmware. During lessons, use the named environment's
+buttons to avoid flashing the wrong stage.
+
 ## Firmware stage 1: DHT22 serial readings
 
 This is the smallest firmware. It reads DHT22 every two seconds and prints:
@@ -246,9 +270,9 @@ DATA,26.80,57.00
 Build and upload:
 
 ```sh
-pio run --project-dir firmware/01_dht_serial
-pio run --project-dir firmware/01_dht_serial --target upload
-pio device monitor --baud 115200 --project-dir firmware/01_dht_serial
+pio run -e 01_dht_serial
+pio run -e 01_dht_serial --target upload
+pio device monitor -e 01_dht_serial
 ```
 
 Important code ideas:
@@ -308,9 +332,9 @@ the working copy.
 This lesson appends DHT readings to a CSV file in LittleFS flash.
 
 ```sh
-pio run --project-dir firmware/02_flash_storage
-pio run --project-dir firmware/02_flash_storage --target upload
-pio device monitor --baud 115200 --project-dir firmware/02_flash_storage
+pio run -e 02_flash_storage
+pio run -e 02_flash_storage --target upload
+pio device monitor -e 02_flash_storage
 ```
 
 Commands:
@@ -440,9 +464,9 @@ This stage contains only DHT reading, a ten-reading window, neural inference,
 and 2-of-3 voting.
 
 ```sh
-pio run --project-dir firmware/03_tinyml_inference
-pio run --project-dir firmware/03_tinyml_inference --target upload
-pio device monitor --baud 115200 --project-dir firmware/03_tinyml_inference
+pio run -e 03_tinyml_inference
+pio run -e 03_tinyml_inference --target upload
+pio device monitor -e 03_tinyml_inference
 ```
 
 The first nine readings produce warm-up messages. From the tenth reading:
@@ -471,9 +495,9 @@ The root firmware combines:
 Build and flash:
 
 ```sh
-pio run
-pio run --target upload
-pio device monitor --baud 115200
+pio run -e 04_final_combined
+pio run -e 04_final_combined --target upload
+pio device monitor -e 04_final_combined
 ```
 
 The final partition layout is defined by `partitions.csv`:

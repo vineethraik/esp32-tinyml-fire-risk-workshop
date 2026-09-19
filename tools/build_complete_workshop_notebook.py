@@ -481,16 +481,19 @@ print("\n".join(header_path.read_text().splitlines()[:14]))
     markdown(r"""
 ## 11. Part I — ESP32 inference integration
 
-The repository keeps each ESP32 learning step separately:
+The root `platformio.ini` exposes every ESP32 learning step as a separate
+clickable environment in VS Code:
 
-| Folder | Lesson |
+| PlatformIO environment | Lesson |
 | --- | --- |
-| `firmware/01_dht_serial` | sensor → clean serial lines |
-| `firmware/02_flash_storage` | append readings to local flash and export them |
-| `firmware/03_tinyml_inference` | ten-reading window → model → vote |
-| repository root | final combined ring logger + export + inference |
+| `01_dht_serial` | sensor → clean serial lines |
+| `02_flash_storage` | append readings to local flash and export them |
+| `03_tinyml_inference` | ten-reading window → model → vote |
+| `04_final_combined` | final ring logger + export + inference |
 
-Build a small stage with `pio run --project-dir firmware/01_dht_serial`. The final combined firmware remains in `src/main.cpp`.
+In PlatformIO **PROJECT TASKS**, expand one environment and click **General →
+Build**, **Upload**, or **Monitor**. Only one firmware runs on the board at a
+time. The generic bottom-bar buttons use `04_final_combined` by default.
 
 The inference stage:
 
@@ -516,16 +519,16 @@ votedHighRisk = highRiskVoteCount == 3 && highVotes >= 2;
 Build and flash manually only when your board is connected:
 
 ```sh
-pio run --project-dir firmware/01_dht_serial --target upload
+pio run -e 01_dht_serial --target upload
 python tools/collect_serial_csv.py --port /dev/cu.usbserial-0001 \
-  --output data/raw/my_session.csv --count 100
+  --output data/imports/my_session.csv --count 100
 
-pio run --project-dir firmware/03_tinyml_inference --target upload
-pio device monitor --baud 115200 --project-dir firmware/03_tinyml_inference
+pio run -e 03_tinyml_inference --target upload
+pio device monitor -e 03_tinyml_inference
 
 # Final combined system
-pio run --target upload
-pio device monitor --baud 115200
+pio run -e 04_final_combined --target upload
+pio device monitor -e 04_final_combined
 ```
 
 Wait for ten new samples, about 20 seconds, then send:
@@ -548,10 +551,10 @@ OK+RISK
 RUN_PLATFORMIO_BUILD = False
 
 if RUN_PLATFORMIO_BUILD:
-    subprocess.run(["pio", "run"], cwd=PROJECT_ROOT, check=True)
+    subprocess.run(["pio", "run", "-e", "04_final_combined"], cwd=PROJECT_ROOT, check=True)
 else:
     print("Build skipped. Set RUN_PLATFORMIO_BUILD=True only after PlatformIO is installed.")
-    print("Command: pio run")
+    print("Command: pio run -e 04_final_combined")
 """),
     markdown(r"""
 ## 12. Live demonstration

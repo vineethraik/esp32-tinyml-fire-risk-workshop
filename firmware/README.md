@@ -1,6 +1,8 @@
 # ESP32 firmware learning stages
 
-Each folder is a small, independently buildable PlatformIO project.
+Each folder is a small, independently buildable PlatformIO project. For
+students, the repository-root `platformio.ini` also exposes every stage as a
+separate environment in VS Code's PlatformIO **PROJECT TASKS** sidebar.
 
 | Stage | Purpose | Output |
 | --- | --- | --- |
@@ -9,12 +11,16 @@ Each folder is a small, independently buildable PlatformIO project.
 | `03_tinyml_inference` | Keep ten readings and run the neural network | `RISK,label,confidence,voted_high,inference_us` |
 | repository root | Final combined firmware | 1 MiB ring logger + export + TinyML inference |
 
-Build one stage:
+Build one stage from the repository root:
 
 ```sh
-pio run --project-dir firmware/01_dht_serial
-pio run --project-dir firmware/01_dht_serial --target upload
+pio run -e 01_dht_serial
+pio run -e 01_dht_serial --target upload
 ```
+
+Equivalent sidebar flow: expand `01_dht_serial`, then click **General →
+Build**, **Upload**, or **Monitor**. The other environment names are
+`02_flash_storage`, `03_tinyml_inference`, and `04_final_combined`.
 
 Only one firmware can run on the board at a time. Stage 02 uses a simple
 LittleFS CSV partition for teaching storage. The final root firmware uses the

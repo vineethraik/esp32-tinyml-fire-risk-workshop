@@ -36,6 +36,23 @@ If PlatformIO is not installed, use its official IDE extension or have the
 instructor pre-flash boards. Students can still complete the data and model
 activities without hardware.
 
+## PlatformIO one-click firmware environments
+
+Open the repository root in VS Code. In the PlatformIO sidebar, expand
+**PROJECT TASKS**. Four environments appear:
+
+| Environment | Purpose |
+| --- | --- |
+| `01_dht_serial` | Basic sensor and serial lesson |
+| `02_flash_storage` | LittleFS storage lesson |
+| `03_tinyml_inference` | Neural-network inference lesson |
+| `04_final_combined` | Complete workshop firmware |
+
+Expand the required environment and click **General → Build**, **Upload**, or
+**Monitor**. The generic PlatformIO bottom-bar buttons use
+`04_final_combined`, the default environment. Close Monitor before Upload or
+before starting a Python serial collector.
+
 ## Before students arrive
 
 - Test one board, cable, DHT22, and serial port from start to finish.
