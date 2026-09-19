@@ -5,6 +5,17 @@
 #include <esp_partition.h>
 #include "thermal_risk_model.h"
 
+// Final workshop firmware
+// -----------------------
+// 1. Read DHT22 every two seconds.
+// 2. Store each valid/invalid reading as one compact 8-byte flash record.
+// 3. Recover the ring after restart using sequence numbers and CRC checks.
+// 4. Feed the newest ten valid readings to the TinyML model.
+// 5. Expose logging, risk, export, and protected deletion through USB serial.
+//
+// Everything runs locally. This firmware has no Wi-Fi, cloud, or OTA path.
+
+// ---- Hardware and timing configuration ------------------------------------
 // Current hardware: DHT22 only. Flame is a separate immediate fire indicator,
 // not part of this stored DHT time series.
 constexpr uint8_t DHT_PIN = 16;  // NodeMCU pin P16 / GPIO16
@@ -14,6 +25,8 @@ constexpr uint32_t DHT_READ_INTERVAL_MS = 2000;
 constexpr bool STOP_WHEN_RING_FULL = false;
 constexpr uint32_t DELETE_CONFIRM_WINDOW_MS = 30000;
 
+// ---- Raw flash ring layout -------------------------------------------------
+// These values must agree with the custom `ring` row in partitions.csv.
 constexpr char RING_LABEL[] = "ring";
 constexpr uint8_t RING_SUBTYPE = 0x40;
 constexpr size_t RING_SIZE_BYTES = 1024 * 1024;
@@ -23,6 +36,8 @@ constexpr size_t FLASH_SECTOR_BYTES = 4096;
 constexpr uint32_t RING_FORMAT_VERSION = 3;
 constexpr uint32_t SEQUENCE_MASK = 0x00FFFFFF;
 
+// Sentinel values represent a failed DHT reading without increasing the
+// record size. Valid values are stored as fixed-point hundredths.
 constexpr int16_t TEMP_UNAVAILABLE = INT16_MIN;
 constexpr uint16_t UINT16_UNAVAILABLE = UINT16_MAX;
 // 8 bytes x 131,072 records = exactly 1 MiB (about 72.8 hours at 2 seconds).
@@ -40,9 +55,11 @@ constexpr size_t RECORD_SIZE = sizeof(SampleRecord);
 constexpr size_t RECORD_CAPACITY = RING_SIZE_BYTES / RECORD_SIZE;
 constexpr size_t RECORDS_PER_SECTOR = FLASH_SECTOR_BYTES / RECORD_SIZE;
 
+// ---- Runtime state ---------------------------------------------------------
 DHT dht(DHT_PIN, DHT22);
 const esp_partition_t *ringPartition = nullptr;
 
+// Latest sensor values are kept as float until converted into a flash record.
 float latestTemperatureC = NAN;
 float latestHumidityPct = NAN;
 bool latestDhtValid = false;
@@ -61,6 +78,8 @@ bool riskLogEnabled = false;
 bool deleteArmed = false;
 uint32_t deleteArmedAtMs = 0;
 
+// TinyML uses fixed-point history copied from the same records written to
+// flash. This ensures the logged data and inference input agree.
 int16_t riskTemperatureHistory[10]{};
 uint16_t riskHumidityHistory[10]{};
 size_t riskHistoryIndex = 0;
@@ -73,10 +92,14 @@ float latestRiskConfidence = 0.0f;
 bool riskReady = false;
 bool votedHighRisk = false;
 
+// Fixed command storage avoids heap allocation and String fragmentation in the
+// long-running final firmware.
 char commandBuffer[48];
 size_t commandLength = 0;
 
+// ---- Record integrity and sequence helpers --------------------------------
 uint8_t crc8(const uint8_t *data, size_t length) {
+  // CRC-8 polynomial 0x07 detects common partial-write and corruption errors.
   uint8_t crc = 0;
   for (size_t i = 0; i < length; ++i) {
     crc ^= data[i];
@@ -89,6 +112,8 @@ uint8_t crc8(const uint8_t *data, size_t length) {
 }
 
 bool isRecordValid(const SampleRecord &record) {
+  // Erased ESP32 flash reads as 0xFF. Such a slot is empty, not a record whose
+  // CRC happens to match.
   const uint8_t *bytes = reinterpret_cast<const uint8_t *>(&record);
   bool erased = true;
   for (size_t i = 0; i < RECORD_SIZE; ++i) {
@@ -99,6 +124,7 @@ bool isRecordValid(const SampleRecord &record) {
 }
 
 uint32_t recordSequence(const SampleRecord &record) {
+  // Reconstruct the compact 24-bit sequence counter.
   return static_cast<uint32_t>(record.sequenceLow) |
          (static_cast<uint32_t>(record.sequenceHigh) << 16);
 }
@@ -110,11 +136,14 @@ void setRecordSequence(SampleRecord &record, uint32_t sequence) {
 }
 
 bool sequenceIsNewer(uint32_t candidate, uint32_t reference) {
+  // Half-range comparison remains correct when the 24-bit counter wraps.
   const uint32_t difference = (candidate - reference) & SEQUENCE_MASK;
   return difference != 0 && difference < 0x00800000;
 }
 
 bool readRecord(size_t index, SampleRecord &record) {
+  // Convert a logical record index into a byte address inside the ring
+  // partition. The ESP-IDF partition API also checks partition boundaries.
   return esp_partition_read(ringPartition, index * RECORD_SIZE, &record,
                             RECORD_SIZE) == ESP_OK;
 }
@@ -134,7 +163,10 @@ bool slotIsErased(size_t index) {
   return true;
 }
 
+// ---- Ring formatting, erasing, and restart recovery ------------------------
 bool ensureRingIsFormatted() {
+  // NVS remembers which on-flash record layout is in use. When the struct
+  // format changes, erase once instead of misreading old bytes as new records.
   Preferences preferences;
   if (!preferences.begin("ring_meta", false)) {
     Serial.println(F("ERR+FLASH,nvs_open"));
@@ -162,6 +194,7 @@ bool ensureRingIsFormatted() {
 }
 
 void resetRingState() {
+  // Reset RAM metadata after the physical ring has been erased.
   writeIndex = 0;
   nextSequence = 0;
   latestSequence = 0;
@@ -188,6 +221,8 @@ bool deleteRing() {
 }
 
 size_t countValidRecordsInSector(size_t sectorStartIndex) {
+  // Flash erases a whole 4096-byte sector at once. Count records that will be
+  // removed so the status total remains correct after wrap-around.
   size_t count = 0;
   SampleRecord record{};
   for (size_t i = 0; i < RECORDS_PER_SECTOR; ++i) {
@@ -199,6 +234,7 @@ size_t countValidRecordsInSector(size_t sectorStartIndex) {
 }
 
 bool eraseSectorForIndex(size_t index) {
+  // Align the desired record to the beginning of its containing flash sector.
   const size_t sectorStartIndex =
       (index / RECORDS_PER_SECTOR) * RECORDS_PER_SECTOR;
   const size_t erasedRecords = countValidRecordsInSector(sectorStartIndex);
@@ -216,6 +252,8 @@ bool eraseSectorForIndex(size_t index) {
 }
 
 bool prepareWritableSlot() {
+  // ESP32 flash bits cannot be changed freely from 0 back to 1. A sector must
+  // be erased before new records are written into it.
   for (size_t attempts = 0; attempts < RECORD_CAPACITY; ++attempts) {
     if (writeIndex % RECORDS_PER_SECTOR == 0 && !eraseSectorForIndex(writeIndex)) {
       return false;
@@ -234,6 +272,8 @@ bool prepareWritableSlot() {
 }
 
 void restoreRingState() {
+  // Scan every sector after boot, ignore invalid/partial records, and locate
+  // the newest valid sequence. No separate mutable index file is required.
   static SampleRecord sectorRecords[RECORDS_PER_SECTOR];
 
   for (size_t sector = 0; sector < RECORD_CAPACITY / RECORDS_PER_SECTOR;
@@ -262,6 +302,8 @@ void restoreRingState() {
   }
 
   if (hasRecords) {
+    // Continue in the slot after the newest record. The next sector erase will
+    // naturally discard the oldest records when the ring wraps.
     nextSequence = (latestSequence + 1) & SEQUENCE_MASK;
     writeIndex = (latestIndex + 1) % RECORD_CAPACITY;
     hasWrapped = validRecordCount == RECORD_CAPACITY;
@@ -269,6 +311,8 @@ void restoreRingState() {
 }
 
 void readDht22() {
+  // Preserve the previous valid value across a transient failed read. Before
+  // the first successful read, conversion functions store unavailable markers.
   const float humidity = dht.readHumidity();
   const float temperatureC = dht.readTemperature();
   if (!isnan(humidity) && !isnan(temperatureC)) {
@@ -279,6 +323,8 @@ void readDht22() {
 }
 
 int16_t toTemperatureCx100() {
+  // Fixed-point 26.37 C becomes integer 2637, saving four bytes compared with
+  // two float fields while retaining more precision than DHT22 provides.
   if (!latestDhtValid) {
     return TEMP_UNAVAILABLE;
   }
@@ -310,6 +356,8 @@ void printHumidity(uint16_t value) {
 }
 
 void printRecord(const __FlashStringHelper *prefix, const SampleRecord &record) {
+  // Both LOG and exported DATA use the same parseable field order:
+  // <prefix><sequence>,<temperature_c>,<humidity_pct>.
   Serial.print(prefix);
   Serial.print(recordSequence(record));
   Serial.print(',');
@@ -320,6 +368,7 @@ void printRecord(const __FlashStringHelper *prefix, const SampleRecord &record) 
 }
 
 const __FlashStringHelper *riskLabel(uint8_t riskClass) {
+  // Class index order must match the Python LABELS list and generated model.
   switch (riskClass) {
     case 0: return F("NORMAL");
     case 1: return F("ELEVATED_THERMAL_RISK");
@@ -328,6 +377,8 @@ const __FlashStringHelper *riskLabel(uint8_t riskClass) {
 }
 
 void printRisk(uint32_t sequence) {
+  // Confidence is the largest Softmax score. It is not a guarantee that the
+  // prediction is correct.
   Serial.print(F("RISK,"));
   Serial.print(sequence);
   Serial.print(',');
@@ -339,11 +390,14 @@ void printRisk(uint32_t sequence) {
 }
 
 void runRiskInference(const SampleRecord &record) {
+  // Only genuine paired sensor values enter the model. Invalid records remain
+  // useful in the flash log but do not advance the ten-reading ML window.
   if (record.temperatureCx100 == TEMP_UNAVAILABLE ||
       record.humidityPctX100 == UINT16_UNAVAILABLE) {
     return;
   }
 
+  // Insert into circular history, then advance to the next/oldest slot.
   riskTemperatureHistory[riskHistoryIndex] = record.temperatureCx100;
   riskHumidityHistory[riskHistoryIndex] = record.humidityPctX100;
   riskHistoryIndex = (riskHistoryIndex + 1) % 10;
@@ -352,17 +406,22 @@ void runRiskInference(const SampleRecord &record) {
     return;
   }
 
+  // Rebuild chronological [temp, humidity] pairs in the exact feature order
+  // used by the Python training script.
   float input[thermal_risk_model::kInputSize];
   for (size_t sample = 0; sample < 10; ++sample) {
     const size_t index = (riskHistoryIndex + sample) % 10;
     input[sample * 2] = static_cast<float>(riskTemperatureHistory[index]) / 100.0f;
     input[sample * 2 + 1] = static_cast<float>(riskHumidityHistory[index]) / 100.0f;
   }
+  // Apply the same per-feature normalization learned during training.
   for (size_t i = 0; i < thermal_risk_model::kInputSize; ++i) {
     input[i] = (input[i] - thermal_risk_model::kInputMean[i]) /
                thermal_risk_model::kInputScale[i];
   }
 
+  // First dense layer plus ReLU. INT8 storage is dequantized by multiplying
+  // each value by the scale saved beside its array.
   float hidden[thermal_risk_model::kHiddenSize];
   for (size_t unit = 0; unit < thermal_risk_model::kHiddenSize; ++unit) {
     hidden[unit] = thermal_risk_model::kDense1Bias[unit] *
@@ -374,6 +433,7 @@ void runRiskInference(const SampleRecord &record) {
     hidden[unit] = max(hidden[unit], 0.0f);
   }
 
+  // Second dense layer returns three raw class scores.
   float logits[thermal_risk_model::kOutputSize];
   float maximum = -INFINITY;
   for (size_t output = 0; output < thermal_risk_model::kOutputSize; ++output) {
@@ -385,11 +445,13 @@ void runRiskInference(const SampleRecord &record) {
     }
     maximum = max(maximum, logits[output]);
   }
+  // Stable Softmax converts scores into probabilities that sum to one.
   float total = 0.0f;
   for (float &logit : logits) {
     logit = expf(logit - maximum);
     total += logit;
   }
+  // Choose the largest class probability.
   latestRiskClass = 0;
   latestRiskConfidence = logits[0] / total;
   for (size_t output = 1; output < thermal_risk_model::kOutputSize; ++output) {
@@ -400,6 +462,9 @@ void runRiskInference(const SampleRecord &record) {
     }
   }
   riskReady = true;
+
+  // Store HIGH as 1 and every other class as 0. votedHighRisk becomes true
+  // only when at least two of the latest three complete windows are HIGH.
   highRiskVotes[highRiskVoteIndex] = latestRiskClass == 2 ? 1 : 0;
   highRiskVoteIndex = (highRiskVoteIndex + 1) % 3;
   highRiskVoteCount = min(highRiskVoteCount + 1, static_cast<size_t>(3));
@@ -410,10 +475,13 @@ void runRiskInference(const SampleRecord &record) {
 }
 
 bool appendSample() {
+  // prepareWritableSlot() performs any sector erase required at the current
+  // ring position before this record is assembled.
   if (ringPartition == nullptr || !prepareWritableSlot()) {
     return false;
   }
 
+  // Build CRC last so it covers the sequence and both sensor fields.
   SampleRecord record{};
   setRecordSequence(record, nextSequence);
   record.temperatureCx100 = toTemperatureCx100();
@@ -428,6 +496,7 @@ bool appendSample() {
     return false;
   }
 
+  // Update RAM metadata only after the partition write succeeds.
   hasRecords = true;
   latestSequence = recordSequence(record);
   latestIndex = writeIndex;
@@ -435,6 +504,7 @@ bool appendSample() {
   ++validRecordCount;
   hasWrapped = hasWrapped || validRecordCount == RECORD_CAPACITY;
   writeIndex = (writeIndex + 1) % RECORD_CAPACITY;
+  // Serial output is optional so normal two-second logging stays quiet.
   if (liveLogEnabled) {
     printRecord(F("LOG,"), record);
   }
@@ -447,6 +517,8 @@ bool appendSample() {
 }
 
 void printStatus() {
+  // ACK/OK framing lets the PC distinguish a complete command response from
+  // asynchronous LOG or RISK lines.
   Serial.printf("ACK+STATUS,records=%u,capacity=%u,interval_ms=%u,dht_interval_ms=%u,record_bytes=%u,complete=%u,live_log=%u\n",
                 static_cast<unsigned>(validRecordCount),
                 static_cast<unsigned>(RECORD_CAPACITY), RECORD_INTERVAL_MS,
@@ -524,6 +596,8 @@ void exportRingRange(size_t startRecord, size_t requestedRecords) {
 }
 
 void handleCommand(const char *command) {
+  // Commands are deliberately explicit and text-based for classroom use and
+  // easy Python integration.
   if (strcmp(command, "AT") == 0) {
     Serial.println(F("OK"));
   } else if (strcmp(command, "AT+STATUS") == 0) {
@@ -562,6 +636,8 @@ void handleCommand(const char *command) {
     // Small default export is safe even when typed manually.
     exportRingRange(0, 256);
   } else if (strncmp(command, "AT+EXPORT,", 10) == 0) {
+    // Parse AT+EXPORT,<chronological_offset>,<maximum_records> in-place inside
+    // commandBuffer; no dynamic allocation is needed.
     char *arguments = const_cast<char *>(command + 10);
     char *separator = strchr(arguments, ',');
     if (separator == nullptr) {
@@ -578,6 +654,7 @@ void handleCommand(const char *command) {
     exportRingRange(static_cast<size_t>(startRecord),
                     static_cast<size_t>(requestedRecords));
   } else if (strcmp(command, "AT+DELETE") == 0) {
+    // The arm command never erases flash by itself.
     deleteArmed = true;
     deleteArmedAtMs = millis();
     Serial.printf("ACK+DELETE,confirm_within_ms=%u\n", DELETE_CONFIRM_WINDOW_MS);
@@ -596,6 +673,7 @@ void handleCommand(const char *command) {
 }
 
 void processSerialCommands() {
+  // Assemble one newline-terminated command without blocking sensor sampling.
   while (Serial.available() > 0) {
     const char received = static_cast<char>(Serial.read());
     if (received == '\r') {
@@ -612,6 +690,7 @@ void processSerialCommands() {
     if (commandLength < sizeof(commandBuffer) - 1) {
       commandBuffer[commandLength++] = received;
     } else {
+      // Discard an overlong command rather than overflow fixed RAM.
       commandLength = 0;
       Serial.println(F("ERR+COMMAND,too_long"));
     }
@@ -622,6 +701,8 @@ void setup() {
   Serial.begin(115200);
   dht.begin();
 
+  // Find the custom 1 MiB data partition by type, subtype, and label instead
+  // of assuming a hard-coded flash address.
   ringPartition = esp_partition_find_first(
       ESP_PARTITION_TYPE_DATA,
       static_cast<esp_partition_subtype_t>(RING_SUBTYPE), RING_LABEL);
@@ -634,6 +715,8 @@ void setup() {
     return;
   }
 
+  // Rebuild ring metadata before writing anything, preserving earlier data
+  // across normal resets and firmware uploads with the same partition layout.
   restoreRingState();
   readDht22();
   if (STOP_WHEN_RING_FULL && hasRecords && validRecordCount == RECORD_CAPACITY) {
@@ -651,9 +734,12 @@ void setup() {
 }
 
 void loop() {
+  // Serial commands are serviced continuously, even between sensor samples.
   processSerialCommands();
 
   const uint32_t now = millis();
+  // Separate timers make the relationship explicit and allow later designs to
+  // record more or less often than the physical sensor is read.
   if (now - lastDhtReadMs >= DHT_READ_INTERVAL_MS) {
     readDht22();
     lastDhtReadMs = now;

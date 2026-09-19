@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Import an ESP32 ring buffer as verified, restartable serial chunks."""
+"""Import an ESP32 ring buffer as verified, restartable serial chunks.
+
+The exporter first asks the ESP32 how many chronological records exist, then
+requests bounded chunks with AT+EXPORT. A chunk is accepted only when its ACK,
+DATA-row count, and final OK response agree. Data stays in a .partial file
+until every expected record arrives; optional device deletion happens last.
+"""
 
 import argparse
 import csv
@@ -26,6 +32,7 @@ def reconnect(device):
 
 
 def parse_args():
+    """Define export, retry/resume, and optional safe-deletion arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", required=True, help="Example: /dev/cu.usbserial-0001")
     parser.add_argument("--output", required=True, type=pathlib.Path)
@@ -47,6 +54,7 @@ def delete_device(args):
         # A new CP2102 connection can reset the NodeMCU.
         time.sleep(3.0)
         device.reset_input_buffer()
+        # The first command only arms deletion; it does not erase anything.
         device.write(b"AT+DELETE\n")
         device.flush()
         deadline = time.monotonic() + 10.0
@@ -59,6 +67,7 @@ def delete_device(args):
         else:
             raise TimeoutError("Timed out arming device deletion")
 
+        # Confirm only after the firmware acknowledged the armed state.
         device.write(b"AT+DELETE,CONFIRM\n")
         device.flush()
         while time.monotonic() < deadline:
@@ -74,8 +83,13 @@ def delete_device(args):
 def main():
     args = parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
+
+    # Keep incomplete work beside the requested CSV. rename/replace happens
+    # only after the imported row count matches the device status snapshot.
     partial_output = args.output.with_name(f"{args.output.name}.partial")
     if not args.resume:
+        # A normal new export ignores an older failed attempt. --resume is the
+        # explicit instruction to trust and continue a verified partial file.
         partial_output.unlink(missing_ok=True)
 
     with serial.Serial(args.port, args.baud, timeout=0.5) as device:
@@ -85,6 +99,8 @@ def main():
         # command loop before transmitting AT+EXPORT.
         time.sleep(1.0)
         device.reset_input_buffer()
+        # Capture one starting record count. New sensor records may continue to
+        # be written, but this export intentionally retrieves that fixed set.
         device.write(b"AT+STATUS\n")
         device.flush()
 
@@ -105,6 +121,8 @@ def main():
 
         records = 0
         if args.resume and partial_output.exists():
+            # CSV DictReader excludes the header, so this is the next offset to
+            # request from the device.
             with partial_output.open(newline="") as existing_file:
                 records = sum(1 for _ in csv.DictReader(existing_file))
             if records > expected_records:
@@ -119,12 +137,15 @@ def main():
                 writer.writerow(CSV_HEADER)
 
             while records < expected_records:
+                # The final request may be smaller than the normal chunk size.
                 wanted = min(args.chunk_size, expected_records - records)
                 complete_chunk = None
                 for attempt in range(3):
                     device.reset_input_buffer()
                     device.write(f"AT+EXPORT,{records},{wanted}\n".encode())
                     device.flush()
+                    # Do not write rows while a chunk is still being received.
+                    # This prevents a timed-out half-chunk from entering CSV.
                     received_rows = []
                     received_ack = False
                     chunk_deadline = min(deadline, time.monotonic() + 30.0)
@@ -139,6 +160,8 @@ def main():
                         elif line.startswith("OK+EXPORT,"):
                             fields = dict(item.split("=", 1) for item in line.split(",")[1:])
                             sent = int(fields["records"])
+                            # Three conditions must agree before this chunk is
+                            # accepted: initial ACK, firmware count, row count.
                             if received_ack and sent == wanted and len(received_rows) == wanted:
                                 complete_chunk = received_rows
                             break
@@ -151,12 +174,15 @@ def main():
 
                 if complete_chunk is None:
                     raise RuntimeError(f"Could not import complete chunk at record {records}")
+                # Only complete verified chunks become restartable progress.
                 writer.writerows(complete_chunk)
                 records += len(complete_chunk)
 
     if records != expected_records:
         raise RuntimeError(f"Incomplete import: expected {expected_records}, got {records}")
 
+    # Rename is the completion boundary: the final requested filename appears
+    # only after every expected row has been verified.
     partial_output.replace(args.output)
     print(f"Saved {records} records to {args.output}")
 

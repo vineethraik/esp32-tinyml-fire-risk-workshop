@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Build the single self-learning workshop notebook from readable cell sources."""
+"""Build the single self-learning workshop notebook from readable cell sources.
+
+Notebook JSON is difficult to review by hand. This script keeps each Markdown
+and Python cell as ordinary readable text, then generates the `.ipynb` file.
+Edit this builder when changing permanent workshop content.
+"""
 
 import json
 from pathlib import Path
@@ -9,6 +14,7 @@ OUTPUT = Path("notebooks/complete_tinyml_fire_risk_workshop.ipynb")
 
 
 def markdown(text):
+    """Return one Jupyter Markdown cell with line endings preserved."""
     return {
         "cell_type": "markdown",
         "metadata": {},
@@ -17,6 +23,7 @@ def markdown(text):
 
 
 def code(text):
+    """Return one unexecuted Jupyter code cell with no saved output."""
     return {
         "cell_type": "code",
         "execution_count": None,
@@ -26,6 +33,7 @@ def code(text):
     }
 
 
+# Cell order here is the order students see in Jupyter.
 cells = [
     markdown(r"""
 # ESP32 TinyML thermal-risk workshop
@@ -628,6 +636,8 @@ The most important lesson is not that “AI detects fire.” It is that an embed
 ]
 
 
+# Minimal notebook metadata tells Jupyter to use a normal Python/ipykernel
+# environment while keeping the generated file portable between computers.
 notebook = {
     "cells": cells,
     "metadata": {
@@ -645,6 +655,8 @@ notebook = {
     "nbformat_minor": 5,
 }
 
+# Create the notebook folder on a fresh clone and write deterministic JSON so
+# Git diffs remain reviewable.
 OUTPUT.parent.mkdir(parents=True, exist_ok=True)
 OUTPUT.write_text(json.dumps(notebook, indent=1) + "\n")
 print(f"Wrote {OUTPUT} with {len(cells)} cells")
