@@ -114,6 +114,7 @@ numpy
 pandas
 pyserial
 jupyterlab
+ipykernel
 ```
 
 ### Services

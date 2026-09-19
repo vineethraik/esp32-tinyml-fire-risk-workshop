@@ -3,5 +3,6 @@ numpy>=1.26
 pandas>=2.0
 pyserial>=3.5
 
-# Optional: only needed to open the included notebooks.
+# Required for opening the notebook and selecting this virtual environment.
 jupyterlab>=4.0
+ipykernel>=6.29
