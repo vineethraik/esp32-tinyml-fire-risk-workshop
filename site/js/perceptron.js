@@ -20,6 +20,7 @@ const ACTIVATIONS = {
     { id: "step_lt", label: "Step (z < 0)" },
     { id: "sigmoid", label: "Sigmoid" },
     { id: "relu", label: "ReLU" },
+    { id: "linear", label: "Linear" },
     { id: "softmax", label: "Softmax" },
   ],
   variable: [
