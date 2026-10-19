@@ -130,6 +130,12 @@ select {
   background: white;
 }
 
+input[type="range"] {
+  width: 8rem;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 button {
   padding: 7px 12px;
   border: 1px solid var(--accent);

@@ -41,7 +41,11 @@ const FORMULAS = {
   softmax: "scores are z and 0.  P(1) = e^z / (e^z + e^0).  delta = learningRate × (target − P(1)) × input",
 };
 
-const ROW_PAUSE_MS = 180;
+function rowPauseMs() {
+  const speed = Number(document.getElementById("speed").value);
+  const level = Number.isFinite(speed) && speed > 0 ? speed : 3;
+  return Math.round(600 / level);
+}
 
 let inputNames = [];
 let rows = [];
@@ -374,17 +378,17 @@ async function runPasses(count, stopWhenReached) {
       for (let i = 0; i < sumWeights.length; i++) sumWeights[i] += pull.weightDeltas[i];
       sumBias += pull.biasDelta;
       render();
-      await sleep(ROW_PAUSE_MS);
+      await sleep(rowPauseMs());
     }
     applyAverage(sumWeights, sumBias, countRows);
     render();
     if (stopWhenReached && targetsReached()) {
       const readout = document.getElementById("readout");
       readout.textContent += "\ntargets reached, run stopped";
-      await sleep(ROW_PAUSE_MS);
+      await sleep(rowPauseMs());
       break;
     }
-    await sleep(ROW_PAUSE_MS);
+    await sleep(rowPauseMs());
   }
   setPlaying(false);
   render();
