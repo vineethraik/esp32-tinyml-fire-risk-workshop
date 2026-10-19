@@ -6,6 +6,8 @@
 //   Step:    delta = learningRate * (target - output) * input
 //   Linear:  same, because the slope is 1
 //   Sigmoid: multiply by output * (1 - output)
+//   ReLU:    output = z when z > 0, else 0.
+//            delta = learningRate * (target - output) * (z > 0 ? 1 : 0) * input
 //   Softmax: output is P(output = 1) from scores z and 0.
 //            The loss slope on that score is P(1) - target.
 //            The weight update uses the opposite sign, so
@@ -16,12 +18,14 @@ const ACTIVATIONS = {
     { id: "step_gt", label: "Step (z > 0)" },
     { id: "step_lt", label: "Step (z < 0)" },
     { id: "sigmoid", label: "Sigmoid" },
+    { id: "relu", label: "ReLU" },
     { id: "softmax", label: "Softmax" },
   ],
   variable: [
     { id: "step_gt", label: "Step (z > 0)" },
     { id: "step_lt", label: "Step (z < 0)" },
     { id: "sigmoid", label: "Sigmoid" },
+    { id: "relu", label: "ReLU" },
     { id: "linear", label: "Linear" },
   ],
 };
@@ -30,17 +34,22 @@ const FORMULAS = {
   step_gt: "output = 1 when z > 0, else 0.  delta = learningRate × (target − output) × input",
   step_lt: "output = 1 when z < 0, else 0.  delta = learningRate × (target − output) × input",
   sigmoid: "output = 1 / (1 + e^(−z)).  delta = learningRate × (target − output) × output × (1 − output) × input",
+  relu: "output = z when z > 0, else 0.  delta = learningRate × (target − output) × (z > 0 ? 1 : 0) × input",
   linear: "output = z.  delta = learningRate × (target − output) × input",
   softmax: "scores are z and 0.  P(1) = e^z / (e^z + e^0).  delta = learningRate × (target − P(1)) × input",
 };
+
+const ROW_PAUSE_MS = 180;
 
 let inputNames = [];
 let rows = [];
 let weights = [];
 let bias = 0;
-let nextRow = 0;
 let stepCount = 0;
 let lastChange = null;
+let activeRow = -1;
+let shown = null;
+let playing = false;
 
 function round2(value) {
   return Math.round(value * 100) / 100;
@@ -60,9 +69,21 @@ function formatSigned(value) {
   return "0.00";
 }
 
+function sleep(ms) {
+  return new Promise(function wake(resolve) {
+    setTimeout(resolve, ms);
+  });
+}
+
 function learningRate() {
   const value = Number(document.getElementById("learning-rate").value);
   if (!Number.isFinite(value)) return 0.1;
+  return value;
+}
+
+function requestedPasses() {
+  const value = Math.floor(Number(document.getElementById("steps").value));
+  if (!Number.isFinite(value) || value < 1) return 1;
   return value;
 }
 
@@ -72,6 +93,14 @@ function activationName() {
 
 function outputMode() {
   return document.getElementById("output-mode").value;
+}
+
+function weightLook(weight) {
+  const thickness = 1.5 + Math.min(6.5, Math.abs(weight) * 4);
+  let color = "#1c1915";
+  if (weight > 0.005) color = "#0f6e56";
+  else if (weight < -0.005) color = "#9a3412";
+  return { thickness: thickness, color: color };
 }
 
 // z = bias + each input times its weight.
@@ -101,14 +130,16 @@ function activate(name, z) {
   if (name === "step_gt") return z > 0 ? 1 : 0;
   if (name === "step_lt") return z < 0 ? 1 : 0;
   if (name === "sigmoid") return sigmoid(z);
+  if (name === "relu") return z > 0 ? z : 0;
   if (name === "softmax") return softmaxPositive(z);
   return z;
 }
 
 // How far the output should pull z, before multiplying by the input.
-function errorFactor(name, target, output) {
+function errorFactor(name, target, output, z) {
   const error = target - output;
   if (name === "sigmoid") return error * output * (1 - output);
+  if (name === "relu") return error * (z > 0 ? 1 : 0);
   return error;
 }
 
@@ -116,13 +147,27 @@ function zeroWeights() {
   weights = [];
   for (let i = 0; i < inputNames.length; i++) weights.push(0);
   bias = 0;
-  nextRow = 0;
   stepCount = 0;
   lastChange = null;
+  activeRow = -1;
+  shown = null;
 }
 
 function predictRow(row) {
   return activate(activationName(), weightedSum(row.values));
+}
+
+function setPlaying(on) {
+  playing = on;
+  const ids = [
+    "step", "run", "infer", "random-weights", "reset-weights",
+    "add-record", "add-input", "remove-input", "steps",
+    "output-mode", "activation", "learning-rate",
+  ];
+  for (let i = 0; i < ids.length; i++) {
+    document.getElementById(ids[i]).disabled = on;
+  }
+  if (!on) document.getElementById("remove-input").disabled = inputNames.length <= 1;
 }
 
 async function loadProvidedDataset() {
@@ -144,7 +189,7 @@ async function loadProvidedDataset() {
   ensureActivationFitsMode();
   zeroWeights();
   render();
-  document.getElementById("readout").textContent = "Weights start at 0. Press Step to use row 1.";
+  document.getElementById("readout").textContent = "Weights start at 0. Press Step to train every row once.";
 }
 
 function ensureActivationFitsMode() {
@@ -164,13 +209,23 @@ function ensureActivationFitsMode() {
 }
 
 function addRecord() {
+  if (playing) return;
   const values = [];
   for (let i = 0; i < inputNames.length; i++) values.push(0);
   rows.push({ values: values, target: 0 });
   render();
 }
 
+function deleteRow(index) {
+  if (playing) return;
+  rows.splice(index, 1);
+  if (activeRow > index) activeRow -= 1;
+  if (activeRow >= rows.length) activeRow = rows.length - 1;
+  render();
+}
+
 function addInput() {
+  if (playing) return;
   inputNames.push("x" + (inputNames.length + 1));
   weights.push(0);
   for (let r = 0; r < rows.length; r++) rows[r].values.push(0);
@@ -179,43 +234,40 @@ function addInput() {
 }
 
 function removeInput() {
-  if (inputNames.length <= 1) return;
+  if (playing || inputNames.length <= 1) return;
   inputNames.pop();
   weights.pop();
   for (let r = 0; r < rows.length; r++) rows[r].values.pop();
-  if (nextRow >= rows.length) nextRow = 0;
   lastChange = null;
   render();
 }
 
 function randomWeights() {
+  if (playing) return;
   for (let i = 0; i < weights.length; i++) {
     weights[i] = round2(Math.random() * 2 - 1);
   }
   bias = round2(Math.random() * 2 - 1);
   lastChange = null;
+  shown = null;
   render();
-  document.getElementById("readout").textContent = "Random weights are set. Press Step to train from the highlighted row.";
+  document.getElementById("readout").textContent = "Random weights are set. Press Step to train every row once.";
 }
 
 function resetWeights() {
+  if (playing) return;
   zeroWeights();
   render();
-  document.getElementById("readout").textContent = "Weights are 0 again. Press Step to use row 1.";
+  document.getElementById("readout").textContent = "Weights are 0 again. Press Step to train every row once.";
 }
 
-function stepTrain() {
-  if (rows.length === 0) {
-    document.getElementById("readout").textContent = "Add a record before stepping.";
-    return;
-  }
-  const rowNumber = nextRow;
+function trainOneRow(rowNumber) {
   const row = rows[rowNumber];
   const name = activationName();
   const rate = learningRate();
   const z = weightedSum(row.values);
   const output = activate(name, z);
-  const factor = errorFactor(name, row.target, output);
+  const factor = errorFactor(name, row.target, output, z);
   const oldWeights = weights.slice();
   const oldBias = bias;
   const weightDeltas = [];
@@ -234,8 +286,8 @@ function stepTrain() {
     oldWeights: oldWeights,
     oldBias: oldBias,
   };
-  stepCount += 1;
-  nextRow = (rowNumber + 1) % rows.length;
+  activeRow = rowNumber;
+  shown = { values: row.values.slice(), z: z, output: output };
 
   const lines = [
     "step " + stepCount + ", row " + (rowNumber + 1),
@@ -255,6 +307,60 @@ function stepTrain() {
     + " (" + formatSigned(biasDelta) + ")"
   );
   document.getElementById("readout").textContent = lines.join("\n");
+}
+
+function showInferenceRow(rowNumber) {
+  const row = rows[rowNumber];
+  const z = weightedSum(row.values);
+  const output = activate(activationName(), z);
+  activeRow = rowNumber;
+  shown = { values: row.values.slice(), z: z, output: output };
+  lastChange = null;
+  const lines = [
+    "infer, row " + (rowNumber + 1),
+    "z = " + formatNum(z),
+    "output = " + formatNum(output),
+    "target = " + formatNum(row.target),
+    "weights stay the same",
+  ];
+  for (let i = 0; i < inputNames.length; i++) {
+    lines.push(inputNames[i] + " = " + formatNum(row.values[i]));
+  }
+  document.getElementById("readout").textContent = lines.join("\n");
+}
+
+async function runPasses(count) {
+  if (playing) return;
+  if (rows.length === 0) {
+    document.getElementById("readout").textContent = "Add a record before stepping.";
+    return;
+  }
+  setPlaying(true);
+  for (let pass = 0; pass < count; pass++) {
+    stepCount += 1;
+    for (let r = 0; r < rows.length; r++) {
+      trainOneRow(r);
+      render();
+      await sleep(ROW_PAUSE_MS);
+    }
+  }
+  setPlaying(false);
+  render();
+}
+
+async function inferAll() {
+  if (playing) return;
+  if (rows.length === 0) {
+    document.getElementById("readout").textContent = "Add a record before inference.";
+    return;
+  }
+  setPlaying(true);
+  for (let r = 0; r < rows.length; r++) {
+    showInferenceRow(r);
+    render();
+    await sleep(ROW_PAUSE_MS);
+  }
+  setPlaying(false);
   render();
 }
 
@@ -273,11 +379,12 @@ function renderTable() {
   for (let i = 0; i < inputNames.length; i++) header.appendChild(cell("th", inputNames[i]));
   header.appendChild(cell("th", "target"));
   header.appendChild(cell("th", "prediction"));
+  header.appendChild(cell("th", ""));
   head.appendChild(header);
 
   for (let r = 0; r < rows.length; r++) {
     const tr = document.createElement("tr");
-    if (r === nextRow) tr.className = "active";
+    if (r === activeRow) tr.className = "active";
     tr.appendChild(cell("td", String(r + 1)));
     for (let c = 0; c < inputNames.length; c++) {
       const td = document.createElement("td");
@@ -285,6 +392,7 @@ function renderTable() {
       input.type = "number";
       input.step = "any";
       input.value = String(rows[r].values[c]);
+      input.disabled = playing;
       input.addEventListener("input", function onValue(event) {
         const parsed = Number(event.target.value);
         rows[r].values[c] = Number.isFinite(parsed) ? parsed : 0;
@@ -299,9 +407,20 @@ function renderTable() {
     prediction.dataset.prediction = "1";
     prediction.textContent = formatNum(predictRow(rows[r]));
     tr.appendChild(prediction);
+    const action = document.createElement("td");
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "delete";
+    remove.textContent = "Delete";
+    remove.disabled = playing;
+    remove.addEventListener("click", function onDelete() {
+      deleteRow(r);
+    });
+    action.appendChild(remove);
+    tr.appendChild(action);
     body.appendChild(tr);
   }
-  document.getElementById("remove-input").disabled = inputNames.length <= 1;
+  if (!playing) document.getElementById("remove-input").disabled = inputNames.length <= 1;
 }
 
 function cell(tag, text) {
@@ -321,6 +440,7 @@ function targetCell(rowIndex) {
       if (Number(rows[rowIndex].target) === value) option.selected = true;
       select.appendChild(option);
     }
+    select.disabled = playing;
     select.addEventListener("change", function onTarget(event) {
       rows[rowIndex].target = Number(event.target.value);
       fillPredictions();
@@ -331,6 +451,7 @@ function targetCell(rowIndex) {
     input.type = "number";
     input.step = "any";
     input.value = String(rows[rowIndex].target);
+    input.disabled = playing;
     input.addEventListener("input", function onTarget(event) {
       const parsed = Number(event.target.value);
       rows[rowIndex].target = Number.isFinite(parsed) ? parsed : 0;
@@ -351,77 +472,110 @@ function renderDiagram() {
   const svg = document.getElementById("diagram");
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   const svgNs = "http://www.w3.org/2000/svg";
-  const names = inputNames.concat(["bias"]);
-  const rowHeight = 78;
-  const height = Math.max(280, names.length * rowHeight + 24);
-  const width = 760;
+  const rowHeight = 88;
+  const top = 48;
+  const width = 860;
+  const yAt = function yOf(index) {
+    return top + index * rowHeight;
+  };
+  const ySum = inputNames.length === 0
+    ? top
+    : (yAt(0) + yAt(inputNames.length - 1)) / 2;
+  const yBias = ySum + 120;
+  const height = Math.max(300, yBias + 56);
   svg.setAttribute("viewBox", "0 0 " + width + " " + height);
 
-  const xIn = 70;
-  const xSum = 330;
-  const xAct = 520;
-  const xOut = 680;
-  const ySum = height / 2;
+  const xIn = 80;
+  const xBox = 270;
+  const xSum = 480;
+  const xAct = 650;
+  const xOut = 790;
 
-  function yAt(index) {
-    return 40 + index * rowHeight;
-  }
-
-  for (let i = 0; i < names.length; i++) {
+  for (let i = 0; i < inputNames.length; i++) {
     const y = yAt(i);
-    const isBias = i === inputNames.length;
-    drawLine(svg, svgNs, xIn + 36, y, xSum - 32, ySum);
-    const labelX = (xIn + xSum) / 2;
-    const labelY = (y + ySum) / 2;
-    const weight = isBias ? bias : weights[i];
-    drawText(svg, svgNs, labelX, labelY - 6, (isBias ? "b " : "w" + (i + 1) + " ") + formatNum(weight));
-    if (lastChange) {
-      const delta = isBias ? lastChange.biasDelta : lastChange.weightDeltas[i];
-      const deltaText = drawText(svg, svgNs, labelX, labelY + 14, formatSigned(delta));
-      deltaText.setAttribute("fill", delta < 0 ? "#9a3412" : "#0f6e56");
-    }
-    drawNode(svg, svgNs, xIn, y, names[i]);
+    drawLine(svg, svgNs, xIn + 32, y, xBox - 46, y, 1.5, "#1c1915");
+    const look = weightLook(weights[i]);
+    drawLine(svg, svgNs, xBox + 46, y, xSum - 34, ySum, look.thickness, look.color);
+  }
+  const biasLook = weightLook(bias);
+  const biasBoxHeight = lastChange ? 48 : 36;
+  drawLine(svg, svgNs, xSum, yBias - biasBoxHeight / 2, xSum, ySum + 34, biasLook.thickness, biasLook.color);
+  drawLine(svg, svgNs, xSum + 34, ySum, xAct - 34, ySum, 1.5, "#1c1915");
+  drawLine(svg, svgNs, xAct + 34, ySum, xOut - 34, ySum, 1.5, "#1c1915");
+
+  for (let i = 0; i < inputNames.length; i++) {
+    const y = yAt(i);
+    const inputValue = shown ? formatNum(shown.values[i]) : null;
+    drawNode(svg, svgNs, xIn, y, inputNames[i], inputValue);
+    const delta = lastChange ? lastChange.weightDeltas[i] : null;
+    drawWeightBox(svg, svgNs, xBox, y, "w" + (i + 1), weights[i], delta);
   }
 
-  drawNode(svg, svgNs, xSum, ySum, "sum");
-  drawLine(svg, svgNs, xSum + 32, ySum, xAct - 36, ySum);
-  drawNode(svg, svgNs, xAct, ySum, "f");
-  drawLine(svg, svgNs, xAct + 36, ySum, xOut - 32, ySum);
-  drawNode(svg, svgNs, xOut, ySum, "y");
-  drawText(svg, svgNs, xAct, ySum + 48, document.getElementById("activation").selectedOptions[0].textContent);
+  drawNode(svg, svgNs, xSum, ySum, "sum", shown ? formatNum(shown.z) : null);
+  drawNode(svg, svgNs, xAct, ySum, "f", shown ? formatNum(shown.output) : null);
+  drawNode(svg, svgNs, xOut, ySum, "y", shown ? formatNum(shown.output) : null);
+  drawWeightBox(svg, svgNs, xSum, yBias, "bias", bias, lastChange ? lastChange.biasDelta : null);
+  const activationLabel = document.getElementById("activation").selectedOptions[0].textContent;
+  drawText(svg, svgNs, xAct, ySum + 52, activationLabel, "#1c1915");
 }
 
-function drawLine(svg, svgNs, x1, y1, x2, y2) {
+function drawLine(svg, svgNs, x1, y1, x2, y2, thickness, color) {
   const line = document.createElementNS(svgNs, "line");
   line.setAttribute("x1", x1);
   line.setAttribute("y1", y1);
   line.setAttribute("x2", x2);
   line.setAttribute("y2", y2);
-  line.setAttribute("stroke", "#1c1915");
-  line.setAttribute("stroke-width", "1.5");
+  line.setAttribute("stroke", color);
+  line.setAttribute("stroke-width", thickness);
+  line.setAttribute("stroke-linecap", "round");
   svg.appendChild(line);
 }
 
-function drawNode(svg, svgNs, x, y, label) {
+function drawNode(svg, svgNs, x, y, label, value) {
   const circle = document.createElementNS(svgNs, "circle");
   circle.setAttribute("cx", x);
   circle.setAttribute("cy", y);
-  circle.setAttribute("r", 28);
+  circle.setAttribute("r", 32);
   circle.setAttribute("fill", "#fffdf8");
   circle.setAttribute("stroke", "#1c1915");
   circle.setAttribute("stroke-width", "1.5");
   svg.appendChild(circle);
-  drawText(svg, svgNs, x, y + 4, label);
+  if (value === null || value === undefined) {
+    drawText(svg, svgNs, x, y + 4, label, "#1c1915");
+  } else {
+    drawText(svg, svgNs, x, y - 6, label, "#5c564c");
+    drawText(svg, svgNs, x, y + 14, value, "#1c1915");
+  }
 }
 
-function drawText(svg, svgNs, x, y, label) {
+function drawWeightBox(svg, svgNs, x, y, title, weight, delta) {
+  const look = weightLook(weight);
+  const height = delta === null || delta === undefined ? 36 : 48;
+  const rect = document.createElementNS(svgNs, "rect");
+  rect.setAttribute("x", x - 44);
+  rect.setAttribute("y", y - height / 2);
+  rect.setAttribute("width", 88);
+  rect.setAttribute("height", height);
+  rect.setAttribute("rx", 8);
+  rect.setAttribute("fill", "#fffdf8");
+  rect.setAttribute("stroke", look.color);
+  rect.setAttribute("stroke-width", Math.max(1.5, look.thickness / 2));
+  svg.appendChild(rect);
+  drawText(svg, svgNs, x, y + (delta === null || delta === undefined ? 4 : -4), title + " " + formatNum(weight), "#1c1915");
+  if (delta !== null && delta !== undefined) {
+    const deltaColor = delta < 0 ? "#9a3412" : "#0f6e56";
+    drawText(svg, svgNs, x, y + 16, formatSigned(delta), deltaColor);
+  }
+}
+
+function drawText(svg, svgNs, x, y, label, color) {
   const text = document.createElementNS(svgNs, "text");
   text.setAttribute("x", x);
   text.setAttribute("y", y);
   text.setAttribute("text-anchor", "middle");
   text.setAttribute("font-size", "13");
   text.setAttribute("font-family", "ui-sans-serif, system-ui, sans-serif");
-  text.setAttribute("fill", "#1c1915");
+  text.setAttribute("fill", color);
   text.textContent = label;
   svg.appendChild(text);
   return text;
@@ -441,7 +595,13 @@ document.addEventListener("DOMContentLoaded", function start() {
   document.getElementById("add-record").addEventListener("click", addRecord);
   document.getElementById("add-input").addEventListener("click", addInput);
   document.getElementById("remove-input").addEventListener("click", removeInput);
-  document.getElementById("step").addEventListener("click", stepTrain);
+  document.getElementById("step").addEventListener("click", function onStep() {
+    runPasses(1);
+  });
+  document.getElementById("run").addEventListener("click", function onRun() {
+    runPasses(requestedPasses());
+  });
+  document.getElementById("infer").addEventListener("click", inferAll);
   document.getElementById("random-weights").addEventListener("click", randomWeights);
   document.getElementById("reset-weights").addEventListener("click", resetWeights);
   loadProvidedDataset().catch(function onLoadError(error) {

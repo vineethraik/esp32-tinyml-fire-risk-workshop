@@ -14,8 +14,8 @@
     <nav data-site-nav></nav>
   </header>
   <main>
-    <p class="lede">One perceptron. Each row is an example. <strong>Step</strong> uses one row and shows how every weight moved. The math is in <code>js/perceptron.js</code>.</p>
-    <div class="grid">
+    <p class="lede">One perceptron. <strong>Step</strong> trains every row once and shows each weight change. The math is in <code>js/perceptron.js</code>.</p>
+    <div class="stack">
       <section>
         <h2>Training data</h2>
         <div class="controls">
@@ -47,11 +47,16 @@
           <label>Learning rate
             <input id="learning-rate" type="number" value="0.1" step="0.01">
           </label>
+          <label>Steps
+            <input id="steps" type="number" min="1" step="1" value="1">
+          </label>
         </div>
         <p id="formula" class="formula"></p>
         <svg id="diagram" role="img" aria-label="Perceptron diagram"></svg>
         <div class="row-actions">
           <button type="button" id="step">Step</button>
+          <button type="button" id="run" class="secondary">Run</button>
+          <button type="button" id="infer" class="secondary">Infer</button>
           <button type="button" id="random-weights" class="secondary">Random weights</button>
           <button type="button" id="reset-weights" class="secondary">Reset weights</button>
         </div>
