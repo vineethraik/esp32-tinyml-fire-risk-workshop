@@ -309,7 +309,7 @@ function applyAverage(sumWeights, sumBias, count) {
     oldBias: oldBias,
   };
   const lines = [
-    "step " + stepCount + ", average of " + count + " rows",
+    "step " + stepCount + ", average of " + count + (count === 1 ? " row" : " rows"),
   ];
   for (let i = 0; i < inputNames.length; i++) {
     lines.push(
@@ -322,6 +322,13 @@ function applyAverage(sumWeights, sumBias, count) {
     + " (" + formatSigned(biasDelta) + ")"
   );
   document.getElementById("readout").textContent = lines.join("\n");
+}
+
+function targetsReached() {
+  for (let r = 0; r < rows.length; r++) {
+    if (round2(predictRow(rows[r])) !== round2(rows[r].target)) return false;
+  }
+  return true;
 }
 
 function showInferenceRow(rowNumber) {
@@ -344,10 +351,14 @@ function showInferenceRow(rowNumber) {
   document.getElementById("readout").textContent = lines.join("\n");
 }
 
-async function runPasses(count) {
+async function runPasses(count, stopWhenReached) {
   if (playing) return;
   if (rows.length === 0) {
     document.getElementById("readout").textContent = "Add a record before stepping.";
+    return;
+  }
+  if (stopWhenReached && targetsReached()) {
+    document.getElementById("readout").textContent = "Targets already reached. Run stopped.";
     return;
   }
   setPlaying(true);
@@ -366,6 +377,12 @@ async function runPasses(count) {
     }
     applyAverage(sumWeights, sumBias, countRows);
     render();
+    if (stopWhenReached && targetsReached()) {
+      const readout = document.getElementById("readout");
+      readout.textContent += "\ntargets reached, run stopped";
+      await sleep(ROW_PAUSE_MS);
+      break;
+    }
     await sleep(ROW_PAUSE_MS);
   }
   setPlaying(false);
@@ -619,7 +636,7 @@ document.addEventListener("DOMContentLoaded", function start() {
     runPasses(1);
   });
   document.getElementById("run").addEventListener("click", function onRun() {
-    runPasses(requestedPasses());
+    runPasses(requestedPasses(), true);
   });
   document.getElementById("infer").addEventListener("click", inferOne);
   document.getElementById("random-weights").addEventListener("click", randomWeights);
