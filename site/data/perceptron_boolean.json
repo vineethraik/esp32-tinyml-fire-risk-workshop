@@ -1,0 +1,9 @@
+{
+  "inputs": ["x1", "x2"],
+  "rows": [
+    { "values": [0, 0], "target": 0 },
+    { "values": [0, 1], "target": 0 },
+    { "values": [1, 0], "target": 0 },
+    { "values": [1, 1], "target": 1 }
+  ]
+}

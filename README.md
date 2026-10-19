@@ -21,6 +21,13 @@ DHT22 sensor
 > demonstration. It is not a certified fire detector or alarm and must never
 > be the only protection for people or property.
 
+## Browser lesson
+
+Perceptron training runs in the browser. The page is static files in `site/`.
+The rest of this repository stays in place.
+
+[vineethraik.github.io/esp32-tinyml-fire-risk-workshop](https://vineethraik.github.io/esp32-tinyml-fire-risk-workshop/)
+
 ## What students will learn
 
 By completing the workshop, students should be able to:

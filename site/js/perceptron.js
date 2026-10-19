@@ -1,0 +1,450 @@
+// One perceptron, written as loops students can read.
+//
+// z = bias + x1 * w1 + x2 * w2 + ...
+//
+// Update for the selected activation:
+//   Step:    delta = learningRate * (target - output) * input
+//   Linear:  same, because the slope is 1
+//   Sigmoid: multiply by output * (1 - output)
+//   Softmax: output is P(output = 1) from scores z and 0.
+//            The loss slope on that score is P(1) - target.
+//            The weight update uses the opposite sign, so
+//            factor = target - P(1). The unused score would move the other way.
+
+const ACTIVATIONS = {
+  boolean: [
+    { id: "step_gt", label: "Step (z > 0)" },
+    { id: "step_lt", label: "Step (z < 0)" },
+    { id: "sigmoid", label: "Sigmoid" },
+    { id: "softmax", label: "Softmax" },
+  ],
+  variable: [
+    { id: "step_gt", label: "Step (z > 0)" },
+    { id: "step_lt", label: "Step (z < 0)" },
+    { id: "sigmoid", label: "Sigmoid" },
+    { id: "linear", label: "Linear" },
+  ],
+};
+
+const FORMULAS = {
+  step_gt: "output = 1 when z > 0, else 0.  delta = learningRate × (target − output) × input",
+  step_lt: "output = 1 when z < 0, else 0.  delta = learningRate × (target − output) × input",
+  sigmoid: "output = 1 / (1 + e^(−z)).  delta = learningRate × (target − output) × output × (1 − output) × input",
+  linear: "output = z.  delta = learningRate × (target − output) × input",
+  softmax: "scores are z and 0.  P(1) = e^z / (e^z + e^0).  delta = learningRate × (target − P(1)) × input",
+};
+
+let inputNames = [];
+let rows = [];
+let weights = [];
+let bias = 0;
+let nextRow = 0;
+let stepCount = 0;
+let lastChange = null;
+
+function round2(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function formatNum(value) {
+  const rounded = round2(value);
+  const body = Math.abs(rounded).toFixed(2);
+  if (rounded < 0) return "−" + body;
+  return body;
+}
+
+function formatSigned(value) {
+  const rounded = round2(value);
+  if (rounded > 0) return "+" + rounded.toFixed(2);
+  if (rounded < 0) return "−" + Math.abs(rounded).toFixed(2);
+  return "0.00";
+}
+
+function learningRate() {
+  const value = Number(document.getElementById("learning-rate").value);
+  if (!Number.isFinite(value)) return 0.1;
+  return value;
+}
+
+function activationName() {
+  return document.getElementById("activation").value;
+}
+
+function outputMode() {
+  return document.getElementById("output-mode").value;
+}
+
+// z = bias + each input times its weight.
+function weightedSum(values) {
+  let z = bias;
+  for (let i = 0; i < values.length; i++) {
+    z += values[i] * weights[i];
+  }
+  return z;
+}
+
+function sigmoid(z) {
+  if (z > 20) return 1;
+  if (z < -20) return 0;
+  return 1 / (1 + Math.exp(-z));
+}
+
+// Softmax of two scores: z for output 1, and 0 for output 0.
+function softmaxPositive(z) {
+  const clipped = Math.max(-20, Math.min(20, z));
+  const score1 = Math.exp(clipped);
+  const score0 = Math.exp(0);
+  return score1 / (score1 + score0);
+}
+
+function activate(name, z) {
+  if (name === "step_gt") return z > 0 ? 1 : 0;
+  if (name === "step_lt") return z < 0 ? 1 : 0;
+  if (name === "sigmoid") return sigmoid(z);
+  if (name === "softmax") return softmaxPositive(z);
+  return z;
+}
+
+// How far the output should pull z, before multiplying by the input.
+function errorFactor(name, target, output) {
+  const error = target - output;
+  if (name === "sigmoid") return error * output * (1 - output);
+  return error;
+}
+
+function zeroWeights() {
+  weights = [];
+  for (let i = 0; i < inputNames.length; i++) weights.push(0);
+  bias = 0;
+  nextRow = 0;
+  stepCount = 0;
+  lastChange = null;
+}
+
+function predictRow(row) {
+  return activate(activationName(), weightedSum(row.values));
+}
+
+async function loadProvidedDataset() {
+  const mode = outputMode();
+  const file = mode === "boolean"
+    ? "data/perceptron_boolean.json"
+    : "data/perceptron_variable.json";
+  const response = await fetch(file);
+  if (!response.ok) throw new Error("Could not load " + file);
+  const data = await response.json();
+  inputNames = data.inputs.slice();
+  rows = [];
+  for (let r = 0; r < data.rows.length; r++) {
+    rows.push({
+      values: data.rows[r].values.slice(),
+      target: data.rows[r].target,
+    });
+  }
+  ensureActivationFitsMode();
+  zeroWeights();
+  render();
+  document.getElementById("readout").textContent = "Weights start at 0. Press Step to use row 1.";
+}
+
+function ensureActivationFitsMode() {
+  const select = document.getElementById("activation");
+  const choices = ACTIVATIONS[outputMode()];
+  const previous = select.value;
+  select.textContent = "";
+  let keep = false;
+  for (let i = 0; i < choices.length; i++) {
+    const option = document.createElement("option");
+    option.value = choices[i].id;
+    option.textContent = choices[i].label;
+    if (choices[i].id === previous) keep = true;
+    select.appendChild(option);
+  }
+  select.value = keep ? previous : choices[0].id;
+}
+
+function addRecord() {
+  const values = [];
+  for (let i = 0; i < inputNames.length; i++) values.push(0);
+  rows.push({ values: values, target: 0 });
+  render();
+}
+
+function addInput() {
+  inputNames.push("x" + (inputNames.length + 1));
+  weights.push(0);
+  for (let r = 0; r < rows.length; r++) rows[r].values.push(0);
+  lastChange = null;
+  render();
+}
+
+function removeInput() {
+  if (inputNames.length <= 1) return;
+  inputNames.pop();
+  weights.pop();
+  for (let r = 0; r < rows.length; r++) rows[r].values.pop();
+  if (nextRow >= rows.length) nextRow = 0;
+  lastChange = null;
+  render();
+}
+
+function randomWeights() {
+  for (let i = 0; i < weights.length; i++) {
+    weights[i] = round2(Math.random() * 2 - 1);
+  }
+  bias = round2(Math.random() * 2 - 1);
+  lastChange = null;
+  render();
+  document.getElementById("readout").textContent = "Random weights are set. Press Step to train from the highlighted row.";
+}
+
+function resetWeights() {
+  zeroWeights();
+  render();
+  document.getElementById("readout").textContent = "Weights are 0 again. Press Step to use row 1.";
+}
+
+function stepTrain() {
+  if (rows.length === 0) {
+    document.getElementById("readout").textContent = "Add a record before stepping.";
+    return;
+  }
+  const rowNumber = nextRow;
+  const row = rows[rowNumber];
+  const name = activationName();
+  const rate = learningRate();
+  const z = weightedSum(row.values);
+  const output = activate(name, z);
+  const factor = errorFactor(name, row.target, output);
+  const oldWeights = weights.slice();
+  const oldBias = bias;
+  const weightDeltas = [];
+
+  for (let i = 0; i < weights.length; i++) {
+    const delta = round2(rate * factor * row.values[i]);
+    weightDeltas.push(delta);
+    weights[i] = round2(weights[i] + delta);
+  }
+  const biasDelta = round2(rate * factor * 1);
+  bias = round2(bias + biasDelta);
+
+  lastChange = {
+    weightDeltas: weightDeltas,
+    biasDelta: biasDelta,
+    oldWeights: oldWeights,
+    oldBias: oldBias,
+  };
+  stepCount += 1;
+  nextRow = (rowNumber + 1) % rows.length;
+
+  const lines = [
+    "step " + stepCount + ", row " + (rowNumber + 1),
+    "z = " + formatNum(z),
+    "output = " + formatNum(output),
+    "target = " + formatNum(row.target),
+    "error = " + formatNum(row.target - output),
+  ];
+  for (let i = 0; i < inputNames.length; i++) {
+    lines.push(
+      "w" + (i + 1) + ": " + formatNum(oldWeights[i]) + " → " + formatNum(weights[i])
+      + " (" + formatSigned(weightDeltas[i]) + ")"
+    );
+  }
+  lines.push(
+    "bias: " + formatNum(oldBias) + " → " + formatNum(bias)
+    + " (" + formatSigned(biasDelta) + ")"
+  );
+  document.getElementById("readout").textContent = lines.join("\n");
+  render();
+}
+
+function renderFormula() {
+  document.getElementById("formula").textContent = FORMULAS[activationName()];
+}
+
+function renderTable() {
+  const head = document.getElementById("data-head");
+  const body = document.getElementById("data-body");
+  head.textContent = "";
+  body.textContent = "";
+
+  const header = document.createElement("tr");
+  header.appendChild(cell("th", "row"));
+  for (let i = 0; i < inputNames.length; i++) header.appendChild(cell("th", inputNames[i]));
+  header.appendChild(cell("th", "target"));
+  header.appendChild(cell("th", "prediction"));
+  head.appendChild(header);
+
+  for (let r = 0; r < rows.length; r++) {
+    const tr = document.createElement("tr");
+    if (r === nextRow) tr.className = "active";
+    tr.appendChild(cell("td", String(r + 1)));
+    for (let c = 0; c < inputNames.length; c++) {
+      const td = document.createElement("td");
+      const input = document.createElement("input");
+      input.type = "number";
+      input.step = "any";
+      input.value = String(rows[r].values[c]);
+      input.addEventListener("input", function onValue(event) {
+        const parsed = Number(event.target.value);
+        rows[r].values[c] = Number.isFinite(parsed) ? parsed : 0;
+        renderDiagram();
+        fillPredictions();
+      });
+      td.appendChild(input);
+      tr.appendChild(td);
+    }
+    tr.appendChild(targetCell(r));
+    const prediction = document.createElement("td");
+    prediction.dataset.prediction = "1";
+    prediction.textContent = formatNum(predictRow(rows[r]));
+    tr.appendChild(prediction);
+    body.appendChild(tr);
+  }
+  document.getElementById("remove-input").disabled = inputNames.length <= 1;
+}
+
+function cell(tag, text) {
+  const element = document.createElement(tag);
+  element.textContent = text;
+  return element;
+}
+
+function targetCell(rowIndex) {
+  const td = document.createElement("td");
+  if (outputMode() === "boolean") {
+    const select = document.createElement("select");
+    for (let value = 0; value <= 1; value++) {
+      const option = document.createElement("option");
+      option.value = String(value);
+      option.textContent = String(value);
+      if (Number(rows[rowIndex].target) === value) option.selected = true;
+      select.appendChild(option);
+    }
+    select.addEventListener("change", function onTarget(event) {
+      rows[rowIndex].target = Number(event.target.value);
+      fillPredictions();
+    });
+    td.appendChild(select);
+  } else {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.step = "any";
+    input.value = String(rows[rowIndex].target);
+    input.addEventListener("input", function onTarget(event) {
+      const parsed = Number(event.target.value);
+      rows[rowIndex].target = Number.isFinite(parsed) ? parsed : 0;
+    });
+    td.appendChild(input);
+  }
+  return td;
+}
+
+function fillPredictions() {
+  const cells = document.querySelectorAll("[data-prediction]");
+  for (let r = 0; r < cells.length && r < rows.length; r++) {
+    cells[r].textContent = formatNum(predictRow(rows[r]));
+  }
+}
+
+function renderDiagram() {
+  const svg = document.getElementById("diagram");
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const svgNs = "http://www.w3.org/2000/svg";
+  const names = inputNames.concat(["bias"]);
+  const rowHeight = 78;
+  const height = Math.max(280, names.length * rowHeight + 24);
+  const width = 760;
+  svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+
+  const xIn = 70;
+  const xSum = 330;
+  const xAct = 520;
+  const xOut = 680;
+  const ySum = height / 2;
+
+  function yAt(index) {
+    return 40 + index * rowHeight;
+  }
+
+  for (let i = 0; i < names.length; i++) {
+    const y = yAt(i);
+    const isBias = i === inputNames.length;
+    drawLine(svg, svgNs, xIn + 36, y, xSum - 32, ySum);
+    const labelX = (xIn + xSum) / 2;
+    const labelY = (y + ySum) / 2;
+    const weight = isBias ? bias : weights[i];
+    drawText(svg, svgNs, labelX, labelY - 6, (isBias ? "b " : "w" + (i + 1) + " ") + formatNum(weight));
+    if (lastChange) {
+      const delta = isBias ? lastChange.biasDelta : lastChange.weightDeltas[i];
+      const deltaText = drawText(svg, svgNs, labelX, labelY + 14, formatSigned(delta));
+      deltaText.setAttribute("fill", delta < 0 ? "#9a3412" : "#0f6e56");
+    }
+    drawNode(svg, svgNs, xIn, y, names[i]);
+  }
+
+  drawNode(svg, svgNs, xSum, ySum, "sum");
+  drawLine(svg, svgNs, xSum + 32, ySum, xAct - 36, ySum);
+  drawNode(svg, svgNs, xAct, ySum, "f");
+  drawLine(svg, svgNs, xAct + 36, ySum, xOut - 32, ySum);
+  drawNode(svg, svgNs, xOut, ySum, "y");
+  drawText(svg, svgNs, xAct, ySum + 48, document.getElementById("activation").selectedOptions[0].textContent);
+}
+
+function drawLine(svg, svgNs, x1, y1, x2, y2) {
+  const line = document.createElementNS(svgNs, "line");
+  line.setAttribute("x1", x1);
+  line.setAttribute("y1", y1);
+  line.setAttribute("x2", x2);
+  line.setAttribute("y2", y2);
+  line.setAttribute("stroke", "#1c1915");
+  line.setAttribute("stroke-width", "1.5");
+  svg.appendChild(line);
+}
+
+function drawNode(svg, svgNs, x, y, label) {
+  const circle = document.createElementNS(svgNs, "circle");
+  circle.setAttribute("cx", x);
+  circle.setAttribute("cy", y);
+  circle.setAttribute("r", 28);
+  circle.setAttribute("fill", "#fffdf8");
+  circle.setAttribute("stroke", "#1c1915");
+  circle.setAttribute("stroke-width", "1.5");
+  svg.appendChild(circle);
+  drawText(svg, svgNs, x, y + 4, label);
+}
+
+function drawText(svg, svgNs, x, y, label) {
+  const text = document.createElementNS(svgNs, "text");
+  text.setAttribute("x", x);
+  text.setAttribute("y", y);
+  text.setAttribute("text-anchor", "middle");
+  text.setAttribute("font-size", "13");
+  text.setAttribute("font-family", "ui-sans-serif, system-ui, sans-serif");
+  text.setAttribute("fill", "#1c1915");
+  text.textContent = label;
+  svg.appendChild(text);
+  return text;
+}
+
+function render() {
+  renderFormula();
+  renderTable();
+  renderDiagram();
+}
+
+document.addEventListener("DOMContentLoaded", function start() {
+  ensureActivationFitsMode();
+  document.getElementById("output-mode").addEventListener("change", loadProvidedDataset);
+  document.getElementById("activation").addEventListener("change", render);
+  document.getElementById("learning-rate").addEventListener("change", render);
+  document.getElementById("add-record").addEventListener("click", addRecord);
+  document.getElementById("add-input").addEventListener("click", addInput);
+  document.getElementById("remove-input").addEventListener("click", removeInput);
+  document.getElementById("step").addEventListener("click", stepTrain);
+  document.getElementById("random-weights").addEventListener("click", randomWeights);
+  document.getElementById("reset-weights").addEventListener("click", resetWeights);
+  loadProvidedDataset().catch(function onLoadError(error) {
+    document.getElementById("readout").textContent = error.message;
+  });
+});

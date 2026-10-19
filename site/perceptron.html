@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Perceptron</title>
+  <link rel="stylesheet" href="css/site.css">
+  <script src="js/nav.js"></script>
+  <script src="js/perceptron.js"></script>
+</head>
+<body data-page="perceptron.html">
+  <header>
+    <h1><a href="index.html">TinyML browser lessons</a></h1>
+    <nav data-site-nav></nav>
+  </header>
+  <main>
+    <p class="lede">One perceptron. Each row is an example. <strong>Step</strong> uses one row and shows how every weight moved. The math is in <code>js/perceptron.js</code>.</p>
+    <div class="grid">
+      <section>
+        <h2>Training data</h2>
+        <div class="controls">
+          <label>Output
+            <select id="output-mode">
+              <option value="boolean">Boolean 0 or 1</option>
+              <option value="variable">Variable number</option>
+            </select>
+          </label>
+        </div>
+        <div class="row-actions">
+          <button type="button" id="add-record">Add record</button>
+          <button type="button" id="add-input" class="secondary">Add input</button>
+          <button type="button" id="remove-input" class="secondary">Remove input</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead id="data-head"></thead>
+            <tbody id="data-body"></tbody>
+          </table>
+        </div>
+      </section>
+      <section>
+        <h2>Perceptron</h2>
+        <div class="controls">
+          <label>Activation
+            <select id="activation"></select>
+          </label>
+          <label>Learning rate
+            <input id="learning-rate" type="number" value="0.1" step="0.01">
+          </label>
+        </div>
+        <p id="formula" class="formula"></p>
+        <svg id="diagram" role="img" aria-label="Perceptron diagram"></svg>
+        <div class="row-actions">
+          <button type="button" id="step">Step</button>
+          <button type="button" id="random-weights" class="secondary">Random weights</button>
+          <button type="button" id="reset-weights" class="secondary">Reset weights</button>
+        </div>
+        <pre id="readout">Weights start at 0. Press Step to use row 1.</pre>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

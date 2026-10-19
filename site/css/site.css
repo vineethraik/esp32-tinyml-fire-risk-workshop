@@ -1,0 +1,204 @@
+:root {
+  --ink: #1c1915;
+  --muted: #5c564c;
+  --paper: #f3efe4;
+  --card: #fffdf8;
+  --line: #ddd4c4;
+  --accent: #0f6e56;
+  --accent-ink: #08382c;
+  --pos: #0f6e56;
+  --neg: #9a3412;
+  --highlight: #e7f3ee;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper);
+  font: 16px/1.45 "Iowan Old Style", Palatino, "Palatino Linotype", serif;
+}
+
+a { color: var(--accent-ink); }
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+
+header h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+nav[data-site-nav] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+nav[data-site-nav] a,
+nav[data-site-nav] span {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  text-decoration: none;
+  font: 14px/1.3 ui-sans-serif, system-ui, sans-serif;
+}
+
+nav[data-site-nav] a[aria-current="page"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+nav[data-site-nav] span {
+  color: var(--muted);
+  background: transparent;
+}
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.lede {
+  max-width: 68ch;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr);
+  gap: 16px;
+}
+
+section {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+section h2 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+
+.controls,
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: 13px/1.2 ui-sans-serif, system-ui, sans-serif;
+  color: var(--muted);
+}
+
+input,
+select,
+button {
+  font: 14px/1.2 ui-sans-serif, system-ui, sans-serif;
+  color: var(--ink);
+}
+
+input,
+select {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+button {
+  padding: 7px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: white;
+  color: var(--accent-ink);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.table-wrap { overflow-x: auto; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 14px/1.3 ui-sans-serif, system-ui, sans-serif;
+}
+
+th,
+td {
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+tr.active { background: var(--highlight); }
+
+td input,
+td select {
+  width: 5.5rem;
+}
+
+.formula {
+  margin: 0;
+  color: var(--muted);
+  font: 14px/1.4 ui-sans-serif, system-ui, sans-serif;
+}
+
+#diagram {
+  display: block;
+  width: 100%;
+  min-height: 280px;
+}
+
+#readout {
+  margin: 0;
+  overflow-x: auto;
+  font: 14px/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.path {
+  padding-left: 1.2rem;
+}
+
+.path li { margin: 6px 0; }
+
+.later { color: var(--muted); }
+
+@media (max-width: 800px) {
+  .grid { grid-template-columns: 1fr; }
+}
