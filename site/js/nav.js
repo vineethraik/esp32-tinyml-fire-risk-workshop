@@ -1,7 +1,7 @@
 // Shared page list. Later lessons stay here as labels until their pages exist.
 const SITE_PAGES = [
   { href: "perceptron.html", label: "Perceptron", ready: true },
-  { href: "neural-net.html", label: "Neural net", ready: false },
+  { href: "neural-net.html", label: "Neural net", ready: true },
   { href: "data.html", label: "Data", ready: false },
   { href: "train.html", label: "Train", ready: false },
   { href: "run.html", label: "Run", ready: false },
