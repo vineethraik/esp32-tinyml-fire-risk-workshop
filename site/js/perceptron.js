@@ -2,7 +2,8 @@
 //
 // z = bias + x1 * w1 + x2 * w2 + ...
 //
-// Update for the selected activation:
+// One step visits every row with the same weights, then adds the average pull.
+// Update for the selected activation, before that average:
 //   Step:    delta = learningRate * (target - output) * input
 //   Linear:  same, because the slope is 1
 //   Sigmoid: multiply by output * (1 - output)
@@ -265,40 +266,50 @@ function resetWeights() {
   document.getElementById("readout").textContent = "Weights are 0 again. Press Step to train every row once.";
 }
 
-function trainOneRow(rowNumber) {
+// One row's pull. Weights stay put until the pass averages every pull.
+function rowPull(rowNumber) {
   const row = rows[rowNumber];
   const name = activationName();
   const rate = learningRate();
   const z = weightedSum(row.values);
   const output = activate(name, z);
   const factor = errorFactor(name, row.target, output, z);
+  const weightDeltas = [];
+  for (let i = 0; i < weights.length; i++) {
+    weightDeltas.push(rate * factor * row.values[i]);
+  }
+  activeRow = rowNumber;
+  shown = { values: row.values.slice(), z: z, output: output };
+  lastChange = null;
+  document.getElementById("readout").textContent = [
+    "step " + stepCount + ", row " + (rowNumber + 1),
+    "z = " + formatNum(z),
+    "output = " + formatNum(output),
+    "target = " + formatNum(row.target),
+    "error = " + formatNum(row.target - output),
+  ].join("\n");
+  return { weightDeltas: weightDeltas, biasDelta: rate * factor };
+}
+
+function applyAverage(sumWeights, sumBias, count) {
   const oldWeights = weights.slice();
   const oldBias = bias;
   const weightDeltas = [];
-
   for (let i = 0; i < weights.length; i++) {
-    const delta = round2(rate * factor * row.values[i]);
+    const delta = round2(sumWeights[i] / count);
     weightDeltas.push(delta);
     weights[i] = round2(weights[i] + delta);
   }
-  const biasDelta = round2(rate * factor * 1);
+  const biasDelta = round2(sumBias / count);
   bias = round2(bias + biasDelta);
-
   lastChange = {
     weightDeltas: weightDeltas,
     biasDelta: biasDelta,
     oldWeights: oldWeights,
     oldBias: oldBias,
   };
-  activeRow = rowNumber;
-  shown = { values: row.values.slice(), z: z, output: output };
-
   const lines = [
-    "step " + stepCount + ", row " + (rowNumber + 1),
-    "z = " + formatNum(z),
-    "output = " + formatNum(output),
-    "target = " + formatNum(row.target),
-    "error = " + formatNum(row.target - output),
+    "step " + stepCount + ", average of " + count + " rows",
   ];
   for (let i = 0; i < inputNames.length; i++) {
     lines.push(
@@ -342,11 +353,20 @@ async function runPasses(count) {
   setPlaying(true);
   for (let pass = 0; pass < count; pass++) {
     stepCount += 1;
-    for (let r = 0; r < rows.length; r++) {
-      trainOneRow(r);
+    const sumWeights = [];
+    for (let i = 0; i < weights.length; i++) sumWeights.push(0);
+    let sumBias = 0;
+    const countRows = rows.length;
+    for (let r = 0; r < countRows; r++) {
+      const pull = rowPull(r);
+      for (let i = 0; i < sumWeights.length; i++) sumWeights[i] += pull.weightDeltas[i];
+      sumBias += pull.biasDelta;
       render();
       await sleep(ROW_PAUSE_MS);
     }
+    applyAverage(sumWeights, sumBias, countRows);
+    render();
+    await sleep(ROW_PAUSE_MS);
   }
   setPlaying(false);
   render();
