@@ -48,6 +48,7 @@ let bias = 0;
 let stepCount = 0;
 let lastChange = null;
 let activeRow = -1;
+let nextInfer = 0;
 let shown = null;
 let playing = false;
 
@@ -150,6 +151,7 @@ function zeroWeights() {
   stepCount = 0;
   lastChange = null;
   activeRow = -1;
+  nextInfer = 0;
   shown = null;
 }
 
@@ -221,6 +223,8 @@ function deleteRow(index) {
   rows.splice(index, 1);
   if (activeRow > index) activeRow -= 1;
   if (activeRow >= rows.length) activeRow = rows.length - 1;
+  if (nextInfer > index) nextInfer -= 1;
+  if (nextInfer >= rows.length) nextInfer = 0;
   render();
 }
 
@@ -348,19 +352,15 @@ async function runPasses(count) {
   render();
 }
 
-async function inferAll() {
+function inferOne() {
   if (playing) return;
   if (rows.length === 0) {
     document.getElementById("readout").textContent = "Add a record before inference.";
     return;
   }
-  setPlaying(true);
-  for (let r = 0; r < rows.length; r++) {
-    showInferenceRow(r);
-    render();
-    await sleep(ROW_PAUSE_MS);
-  }
-  setPlaying(false);
+  if (nextInfer >= rows.length) nextInfer = 0;
+  showInferenceRow(nextInfer);
+  nextInfer += 1;
   render();
 }
 
@@ -601,7 +601,7 @@ document.addEventListener("DOMContentLoaded", function start() {
   document.getElementById("run").addEventListener("click", function onRun() {
     runPasses(requestedPasses());
   });
-  document.getElementById("infer").addEventListener("click", inferAll);
+  document.getElementById("infer").addEventListener("click", inferOne);
   document.getElementById("random-weights").addEventListener("click", randomWeights);
   document.getElementById("reset-weights").addEventListener("click", resetWeights);
   loadProvidedDataset().catch(function onLoadError(error) {

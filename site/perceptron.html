@@ -40,6 +40,13 @@
       </section>
       <section>
         <h2>Perceptron</h2>
+        <div class="row-actions">
+          <button type="button" id="step">Step</button>
+          <button type="button" id="run" class="secondary">Run</button>
+          <button type="button" id="infer" class="secondary">Infer</button>
+          <button type="button" id="random-weights" class="secondary">Random weights</button>
+          <button type="button" id="reset-weights" class="secondary">Reset weights</button>
+        </div>
         <div class="controls">
           <label>Activation
             <select id="activation"></select>
@@ -53,13 +60,6 @@
         </div>
         <p id="formula" class="formula"></p>
         <svg id="diagram" role="img" aria-label="Perceptron diagram"></svg>
-        <div class="row-actions">
-          <button type="button" id="step">Step</button>
-          <button type="button" id="run" class="secondary">Run</button>
-          <button type="button" id="infer" class="secondary">Infer</button>
-          <button type="button" id="random-weights" class="secondary">Random weights</button>
-          <button type="button" id="reset-weights" class="secondary">Reset weights</button>
-        </div>
         <pre id="readout">Weights start at 0. Press Step to use row 1.</pre>
       </section>
     </div>
