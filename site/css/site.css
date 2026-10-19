@@ -185,6 +185,10 @@ td select {
   width: 5.5rem;
 }
 
+td select.activation-choice {
+  width: 10rem;
+}
+
 .formula {
   margin: 0;
   color: var(--muted);

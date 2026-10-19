@@ -1,10 +1,11 @@
-// Shared page list. Later lessons stay here as labels until their pages exist.
+// Shared page list. Every item is a real link on every lesson page.
 const SITE_PAGES = [
-  { href: "perceptron.html", label: "Perceptron", ready: true },
-  { href: "neural-net.html", label: "Neural net", ready: true },
-  { href: "data.html", label: "Data", ready: false },
-  { href: "train.html", label: "Train", ready: false },
-  { href: "run.html", label: "Run", ready: false },
+  { href: "index.html", label: "Home" },
+  { href: "perceptron.html", label: "Perceptron" },
+  { href: "neural-net.html", label: "Neural net" },
+  { href: "data.html", label: "Data" },
+  { href: "train.html", label: "Train" },
+  { href: "run.html", label: "Run" },
 ];
 
 function renderSiteNav() {
@@ -14,18 +15,11 @@ function renderSiteNav() {
   nav.textContent = "";
   for (let i = 0; i < SITE_PAGES.length; i++) {
     const page = SITE_PAGES[i];
-    if (page.ready) {
-      const link = document.createElement("a");
-      link.href = page.href;
-      link.textContent = page.label;
-      if (page.href === current) link.setAttribute("aria-current", "page");
-      nav.appendChild(link);
-    } else {
-      const item = document.createElement("span");
-      item.textContent = page.label;
-      item.title = "Later lesson";
-      nav.appendChild(item);
-    }
+    const link = document.createElement("a");
+    link.href = page.href;
+    link.textContent = page.label;
+    if (page.href === current) link.setAttribute("aria-current", "page");
+    nav.appendChild(link);
   }
 }
 

@@ -25,6 +25,8 @@ const MAX_LAYER_SIZE = 32;
 let inputNames = [];
 let rows = [];
 let hiddenSizes = [2];
+let hiddenActivations = ["relu"];
+let outputAct = "linear";
 let weights = [];
 let biases = [];
 let stepCount = 0;
@@ -79,12 +81,9 @@ function requestedPasses() {
   return value;
 }
 
-function hiddenActivation() {
-  return document.getElementById("hidden-activation").value;
-}
-
-function outputActivation() {
-  return document.getElementById("output-activation").value;
+function activationForLayer(layer) {
+  if (layer === weights.length - 1) return outputAct;
+  return hiddenActivations[layer];
 }
 
 function outputMode() {
@@ -210,6 +209,7 @@ function addLayer() {
   const outputBias = biases.pop()[0];
   weights.pop();
   hiddenSizes.push(2);
+  hiddenActivations.push("relu");
   weights.push(blankMatrix(previous, 2));
   biases.push(blankBias(2));
   weights.push(blankMatrix(2, 1));
@@ -231,6 +231,7 @@ function deleteLayer(index) {
   newBiases.push(biases[index + 1].slice());
   for (let i = index + 2; i < biases.length; i++) newBiases.push(biases[i]);
   hiddenSizes.splice(index, 1);
+  hiddenActivations.splice(index, 1);
   weights = newWeights;
   biases = newBiases;
   pendingDelete = -1;
@@ -255,8 +256,7 @@ function forwardPass(values) {
   const zValues = [];
   for (let layer = 0; layer < weights.length; layer++) {
     const previous = activation[layer];
-    const isOutput = layer === weights.length - 1;
-    const name = isOutput ? outputActivation() : hiddenActivation();
+    const name = activationForLayer(layer);
     const zRow = [];
     const aRow = [];
     for (let unit = 0; unit < biases[layer].length; unit++) {
@@ -278,7 +278,7 @@ function pullsForRow(values, target) {
   const rate = learningRate();
   const last = weights.length - 1;
   const delta = [];
-  delta[last] = [rate * errorFactor(outputActivation(), target, pass.output, pass.zValues[last][0])];
+  delta[last] = [rate * errorFactor(activationForLayer(last), target, pass.output, pass.zValues[last][0])];
   for (let layer = last; layer > 0; layer--) {
     const incoming = pass.activation[layer];
     delta[layer - 1] = [];
@@ -287,7 +287,7 @@ function pullsForRow(values, target) {
       for (let j = 0; j < delta[layer].length; j++) {
         sum += weights[layer][i][j] * delta[layer][j];
       }
-      const slope = hiddenDerivative(hiddenActivation(), incoming[i], pass.zValues[layer - 1][i]);
+      const slope = hiddenDerivative(hiddenActivations[layer - 1], incoming[i], pass.zValues[layer - 1][i]);
       delta[layer - 1].push(sum * slope);
     }
   }
@@ -433,7 +433,7 @@ function setPlaying(on) {
   const ids = [
     "step", "run", "infer", "random-weights", "reset-weights",
     "add-record", "add-input", "remove-input", "add-layer", "steps",
-    "output-mode", "hidden-activation", "output-activation", "learning-rate",
+    "output-mode", "learning-rate",
   ];
   for (let i = 0; i < ids.length; i++) document.getElementById(ids[i]).disabled = on;
   if (!on) document.getElementById("remove-input").disabled = inputNames.length <= 1;
@@ -517,24 +517,24 @@ function resetWeights() {
   document.getElementById("readout").textContent = "Weights are 0 again. Press Step to train every row once.";
 }
 
-function fillActivationSelect(id, selected) {
-  const select = document.getElementById(id);
-  const previous = selected || select.value;
-  select.textContent = "";
+function activationChoice(current, onChange) {
+  const select = document.createElement("select");
+  select.className = "activation-choice";
   for (let i = 0; i < ACTIVATIONS.length; i++) {
     const option = document.createElement("option");
     option.value = ACTIVATIONS[i].id;
     option.textContent = ACTIVATIONS[i].label;
     select.appendChild(option);
   }
-  select.value = previous || (id === "hidden-activation" ? "relu" : "linear");
+  select.value = current;
+  select.disabled = playing;
+  select.addEventListener("change", onChange);
+  return select;
 }
 
 function renderFormula() {
   document.getElementById("formula").textContent =
-    "Hidden uses " + document.getElementById("hidden-activation").selectedOptions[0].textContent
-    + ". Output uses " + document.getElementById("output-activation").selectedOptions[0].textContent
-    + ". One step adds the average pull from every row.";
+    "Pick an activation on each layer in the network table. One step adds the average pull from every row.";
 }
 
 function renderLayers() {
@@ -562,6 +562,14 @@ function renderLayers() {
     size.appendChild(count);
     size.appendChild(plus);
     tr.appendChild(size);
+    const activationCell = document.createElement("td");
+    activationCell.appendChild(activationChoice(hiddenActivations[index], function onActivation(event) {
+      hiddenActivations[index] = event.target.value;
+      renderFormula();
+      renderDiagram();
+      fillPredictions();
+    }));
+    tr.appendChild(activationCell);
     const action = document.createElement("td");
     if (hiddenSizes.length > 1 && pendingDelete === index) {
       action.appendChild(actionButton("Cancel", "secondary", cancelDelete));
@@ -573,6 +581,19 @@ function renderLayers() {
     tr.appendChild(action);
     body.appendChild(tr);
   }
+  const outputRow = document.createElement("tr");
+  outputRow.appendChild(textCell("Output"));
+  outputRow.appendChild(textCell("1"));
+  const outputActivationCell = document.createElement("td");
+  outputActivationCell.appendChild(activationChoice(outputAct, function onOutputActivation(event) {
+    outputAct = event.target.value;
+    renderFormula();
+    renderDiagram();
+    fillPredictions();
+  }));
+  outputRow.appendChild(outputActivationCell);
+  outputRow.appendChild(textCell(""));
+  body.appendChild(outputRow);
   const hideButton = document.getElementById("hide-values");
   hideButton.textContent = valuesHidden() ? "Show values" : "Hide values";
 }
@@ -907,11 +928,7 @@ function toggleValues() {
 }
 
 document.addEventListener("DOMContentLoaded", function start() {
-  fillActivationSelect("hidden-activation", "relu");
-  fillActivationSelect("output-activation", "linear");
   document.getElementById("output-mode").addEventListener("change", loadProvidedDataset);
-  document.getElementById("hidden-activation").addEventListener("change", render);
-  document.getElementById("output-activation").addEventListener("change", render);
   document.getElementById("learning-rate").addEventListener("change", render);
   document.getElementById("add-layer").addEventListener("click", addLayer);
   document.getElementById("add-record").addEventListener("click", addRecord);
