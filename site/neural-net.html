@@ -14,7 +14,7 @@
     <nav data-site-nav></nav>
   </header>
   <main>
-    <p class="lede">A small network with hidden layers you size yourself. <strong>Step</strong> visits every row, then moves each weight by the average change. The math is in <code>js/network.js</code>.</p>
+    <p class="lede">A small network with hidden layers you size yourself. <strong>Step</strong> visits every row. Average on: one weight change from the mean. Average off: change after each row. The math is in <code>js/network.js</code>.</p>
     <div class="stack">
       <section>
         <h2>Network</h2>
@@ -77,6 +77,9 @@
           </label>
           <label>Speed
             <input id="speed" type="range" min="1" max="10" value="3" step="1" title="1 is slow, 10 is fast">
+          </label>
+          <label title="On: one change from the mean of every row. Off: change after each row.">Average
+            <input id="average-update" type="checkbox" checked>
           </label>
         </div>
         <p id="formula" class="formula"></p>

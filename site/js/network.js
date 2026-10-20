@@ -2,7 +2,7 @@
 //
 // Columns: inputs, then each hidden layer, then one output y.
 // z = bias + each incoming value times its weight.
-// One step scores every row with the same weights, then adds the average pull.
+// One step visits every row. Average on: add the mean pull. Average off: add each row's pull.
 // Stored weights keep full precision. The page only rounds numbers for display.
 //
 // Hidden and output use the same activation rules as the perceptron:
@@ -84,6 +84,10 @@ function requestedPasses() {
   const value = Math.floor(Number(document.getElementById("steps").value));
   if (!Number.isFinite(value) || value < 1) return 1;
   return value;
+}
+
+function averageUpdates() {
+  return document.getElementById("average-update").checked;
 }
 
 function activationForLayer(layer) {
@@ -335,7 +339,7 @@ function zeroPull() {
   return { sumWeights: sumWeights, sumBiases: sumBiases };
 }
 
-function applyAverage(sumWeights, sumBiases, count) {
+function applyAverage(sumWeights, sumBiases, count, title) {
   const oldWeights = [];
   const oldBiases = [];
   const weightDeltas = [];
@@ -369,7 +373,7 @@ function applyAverage(sumWeights, sumBiases, count) {
     biasDeltas: biasDeltas,
   };
   const lines = [
-    "step " + stepCount + ", average of " + count + (count === 1 ? " row" : " rows"),
+    title || ("step " + stepCount + ", average of " + count + (count === 1 ? " row" : " rows")),
   ];
   for (let layer = 0; layer < weights.length; layer++) {
     for (let j = 0; j < biases[layer].length; j++) {
@@ -437,7 +441,7 @@ function updatePlayLocks() {
   const ids = [
     "step", "run", "infer", "random-weights", "reset-weights",
     "add-record", "add-input", "remove-input", "add-layer", "steps",
-    "output-mode", "learning-rate",
+    "output-mode", "learning-rate", "average-update",
   ];
   for (let i = 0; i < ids.length; i++) document.getElementById(ids[i]).disabled = playing;
   const stop = document.getElementById("stop-run");
@@ -480,9 +484,11 @@ async function runPasses(count, stopWhenReached) {
       break;
     }
     stepCount += 1;
+    const average = averageUpdates();
     const totals = zeroPull();
     const countRows = rows.length;
     let finishedPass = true;
+    let appliedRow = false;
     for (let r = 0; r < countRows; r++) {
       if (stopRequested) {
         finishedPass = false;
@@ -490,17 +496,23 @@ async function runPasses(count, stopWhenReached) {
         break;
       }
       const pull = pullsForRow(rows[r].values, rows[r].target);
-      addPull(totals.sumWeights, totals.sumBiases, pull);
-      lastChange = null;
-      showRow(r, pull.pass, "step " + stepCount + ", row " + (r + 1));
+      if (average) {
+        addPull(totals.sumWeights, totals.sumBiases, pull);
+        lastChange = null;
+        showRow(r, pull.pass, "step " + stepCount + ", row " + (r + 1));
+      } else {
+        showRow(r, pull.pass, "step " + stepCount + ", row " + (r + 1));
+        applyAverage(pull.weightPulls, pull.biasPulls, 1, "step " + stepCount + ", row " + (r + 1));
+        appliedRow = true;
+      }
       render();
       await sleep(rowPauseMs());
     }
     if (!finishedPass) {
-      stepCount -= 1;
+      if (average || !appliedRow) stepCount -= 1;
       break;
     }
-    applyAverage(totals.sumWeights, totals.sumBiases, countRows);
+    if (average) applyAverage(totals.sumWeights, totals.sumBiases, countRows);
     render();
     if (stopWhenReached && targetsReached()) {
       const readout = document.getElementById("readout");
@@ -578,8 +590,10 @@ function activationChoice(current, onChange) {
 }
 
 function renderFormula() {
-  document.getElementById("formula").textContent =
-    "Pick an activation on each layer in the network table. One step adds the average pull from every row.";
+  const average = document.getElementById("average-update").checked;
+  document.getElementById("formula").textContent = average
+    ? "Pick an activation on each layer. Average on: one step adds the mean pull from every row."
+    : "Pick an activation on each layer. Average off: one step adds each row's pull before the next row.";
 }
 
 function renderLayers() {
@@ -976,6 +990,7 @@ function toggleValues() {
 document.addEventListener("DOMContentLoaded", function start() {
   document.getElementById("output-mode").addEventListener("change", loadProvidedDataset);
   document.getElementById("learning-rate").addEventListener("change", render);
+  document.getElementById("average-update").addEventListener("change", render);
   document.getElementById("add-layer").addEventListener("click", addLayer);
   document.getElementById("add-record").addEventListener("click", addRecord);
   document.getElementById("add-input").addEventListener("click", addInput);

@@ -2,7 +2,7 @@
 //
 // z = bias + x1 * w1 + x2 * w2 + ...
 //
-// One step visits every row with the same weights, then adds the average pull.
+// One step visits every row. Average on: add the mean pull. Average off: add each row's pull.
 // Stored weights keep full precision. The page only rounds numbers for display.
 // Update for the selected activation, before that average:
 //   Step:    delta = learningRate * (target - output) * input
@@ -99,6 +99,10 @@ function requestedPasses() {
   return value;
 }
 
+function averageUpdates() {
+  return document.getElementById("average-update").checked;
+}
+
 function activationName() {
   return document.getElementById("activation").value;
 }
@@ -174,7 +178,7 @@ function updatePlayLocks() {
   const ids = [
     "step", "run", "infer", "random-weights", "reset-weights",
     "add-record", "add-input", "remove-input", "steps",
-    "output-mode", "activation", "learning-rate",
+    "output-mode", "activation", "learning-rate", "average-update",
   ];
   for (let i = 0; i < ids.length; i++) {
     document.getElementById(ids[i]).disabled = playing;
@@ -293,7 +297,7 @@ function resetWeights() {
   document.getElementById("readout").textContent = "Weights are 0 again. Press Step to train every row once.";
 }
 
-// One row's pull. Weights stay put until the pass averages every pull.
+// One row's pull. Average on: weights stay put until the pass mean is applied.
 function rowPull(rowNumber) {
   const row = rows[rowNumber];
   const name = activationName();
@@ -318,7 +322,7 @@ function rowPull(rowNumber) {
   return { weightDeltas: weightDeltas, biasDelta: rate * factor };
 }
 
-function applyAverage(sumWeights, sumBias, count) {
+function applyAverage(sumWeights, sumBias, count, title) {
   const oldWeights = weights.slice();
   const oldBias = bias;
   const weightDeltas = [];
@@ -336,7 +340,7 @@ function applyAverage(sumWeights, sumBias, count) {
     oldBias: oldBias,
   };
   const lines = [
-    "step " + stepCount + ", average of " + count + (count === 1 ? " row" : " rows"),
+    title || ("step " + stepCount + ", average of " + count + (count === 1 ? " row" : " rows")),
   ];
   for (let i = 0; i < inputNames.length; i++) {
     lines.push(
@@ -397,11 +401,13 @@ async function runPasses(count, stopWhenReached) {
       break;
     }
     stepCount += 1;
+    const average = averageUpdates();
     const sumWeights = [];
     for (let i = 0; i < weights.length; i++) sumWeights.push(0);
     let sumBias = 0;
     const countRows = rows.length;
     let finishedPass = true;
+    let appliedRow = false;
     for (let r = 0; r < countRows; r++) {
       if (stopRequested) {
         finishedPass = false;
@@ -409,16 +415,21 @@ async function runPasses(count, stopWhenReached) {
         break;
       }
       const pull = rowPull(r);
-      for (let i = 0; i < sumWeights.length; i++) sumWeights[i] += pull.weightDeltas[i];
-      sumBias += pull.biasDelta;
+      if (average) {
+        for (let i = 0; i < sumWeights.length; i++) sumWeights[i] += pull.weightDeltas[i];
+        sumBias += pull.biasDelta;
+      } else {
+        applyAverage(pull.weightDeltas, pull.biasDelta, 1, "step " + stepCount + ", row " + (r + 1));
+        appliedRow = true;
+      }
       render();
       await sleep(rowPauseMs());
     }
     if (!finishedPass) {
-      stepCount -= 1;
+      if (average || !appliedRow) stepCount -= 1;
       break;
     }
-    applyAverage(sumWeights, sumBias, countRows);
+    if (average) applyAverage(sumWeights, sumBias, countRows);
     render();
     if (stopWhenReached && targetsReached()) {
       const readout = document.getElementById("readout");
@@ -452,7 +463,10 @@ function inferOne() {
 }
 
 function renderFormula() {
-  document.getElementById("formula").textContent = FORMULAS[activationName()];
+  const average = document.getElementById("average-update").checked
+    ? " Average on: one update from the mean of every row."
+    : " Average off: update after each row.";
+  document.getElementById("formula").textContent = FORMULAS[activationName()] + average;
 }
 
 function renderTable() {
@@ -680,6 +694,7 @@ document.addEventListener("DOMContentLoaded", function start() {
   document.getElementById("output-mode").addEventListener("change", loadProvidedDataset);
   document.getElementById("activation").addEventListener("change", render);
   document.getElementById("learning-rate").addEventListener("change", render);
+  document.getElementById("average-update").addEventListener("change", render);
   document.getElementById("add-record").addEventListener("click", addRecord);
   document.getElementById("add-input").addEventListener("click", addInput);
   document.getElementById("remove-input").addEventListener("click", removeInput);

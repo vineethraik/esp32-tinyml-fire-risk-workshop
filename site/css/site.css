@@ -136,6 +136,13 @@ input[type="range"] {
   accent-color: var(--accent);
 }
 
+input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 button {
   padding: 7px 12px;
   border: 1px solid var(--accent);
