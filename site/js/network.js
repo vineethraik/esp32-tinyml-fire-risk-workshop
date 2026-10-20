@@ -35,6 +35,7 @@ let activeRow = -1;
 let nextInfer = 0;
 let shown = null;
 let playing = false;
+let stopRequested = false;
 let pendingDelete = -1;
 let hideValues = false;
 let hideTouched = false;
@@ -64,9 +65,12 @@ function sleep(ms) {
 }
 
 function rowPauseMs() {
+  const pauses = [600, 300, 200, 120, 80, 50, 30, 18, 10, 5];
   const speed = Number(document.getElementById("speed").value);
-  const level = Number.isFinite(speed) && speed > 0 ? speed : 3;
-  return Math.round(600 / level);
+  const level = Number.isFinite(speed) ? Math.round(speed) : 3;
+  if (level < 1) return pauses[0];
+  if (level > pauses.length) return pauses[pauses.length - 1];
+  return pauses[level - 1];
 }
 
 function learningRate() {
@@ -430,13 +434,20 @@ function targetsReached() {
 
 function setPlaying(on) {
   playing = on;
+  if (!on) stopRequested = false;
   const ids = [
     "step", "run", "infer", "random-weights", "reset-weights",
     "add-record", "add-input", "remove-input", "add-layer", "steps",
     "output-mode", "learning-rate",
   ];
   for (let i = 0; i < ids.length; i++) document.getElementById(ids[i]).disabled = on;
+  document.getElementById("stop").disabled = !on;
   if (!on) document.getElementById("remove-input").disabled = inputNames.length <= 1;
+}
+
+function requestStop() {
+  if (!playing) return;
+  stopRequested = true;
 }
 
 async function runPasses(count, stopWhenReached) {
@@ -450,17 +461,32 @@ async function runPasses(count, stopWhenReached) {
     return;
   }
   setPlaying(true);
+  let stopped = false;
   for (let pass = 0; pass < count; pass++) {
+    if (stopRequested) {
+      stopped = true;
+      break;
+    }
     stepCount += 1;
     const totals = zeroPull();
     const countRows = rows.length;
+    let finishedPass = true;
     for (let r = 0; r < countRows; r++) {
+      if (stopRequested) {
+        finishedPass = false;
+        stopped = true;
+        break;
+      }
       const pull = pullsForRow(rows[r].values, rows[r].target);
       addPull(totals.sumWeights, totals.sumBiases, pull);
       lastChange = null;
       showRow(r, pull.pass, "step " + stepCount + ", row " + (r + 1));
       render();
       await sleep(rowPauseMs());
+    }
+    if (!finishedPass) {
+      stepCount -= 1;
+      break;
     }
     applyAverage(totals.sumWeights, totals.sumBiases, countRows);
     render();
@@ -470,10 +496,17 @@ async function runPasses(count, stopWhenReached) {
       await sleep(rowPauseMs());
       break;
     }
+    if (stopRequested) {
+      stopped = true;
+      break;
+    }
     await sleep(rowPauseMs());
   }
   setPlaying(false);
   render();
+  if (stopped) {
+    document.getElementById("readout").textContent += "\nrun stopped";
+  }
 }
 
 function inferOne() {
@@ -936,6 +969,7 @@ document.addEventListener("DOMContentLoaded", function start() {
   document.getElementById("remove-input").addEventListener("click", removeInput);
   document.getElementById("step").addEventListener("click", function onStep() { runPasses(1, false); });
   document.getElementById("run").addEventListener("click", function onRun() { runPasses(requestedPasses(), true); });
+  document.getElementById("stop").addEventListener("click", requestStop);
   document.getElementById("infer").addEventListener("click", inferOne);
   document.getElementById("random-weights").addEventListener("click", randomWeights);
   document.getElementById("reset-weights").addEventListener("click", resetWeights);
