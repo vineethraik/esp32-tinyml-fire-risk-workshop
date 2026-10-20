@@ -3,6 +3,7 @@
 // Columns: inputs, then each hidden layer, then one output y.
 // z = bias + each incoming value times its weight.
 // One step scores every row with the same weights, then adds the average pull.
+// Stored weights keep full precision. The page only rounds numbers for display.
 //
 // Hidden and output use the same activation rules as the perceptron:
 //   Step:    delta = learningRate * (target - output) * input
@@ -346,17 +347,17 @@ function applyAverage(sumWeights, sumBiases, count) {
     for (let i = 0; i < weights[layer].length; i++) {
       const row = [];
       for (let j = 0; j < weights[layer][i].length; j++) {
-        const delta = round2(sumWeights[layer][i][j] / count);
+        const delta = sumWeights[layer][i][j] / count;
         row.push(delta);
-        weights[layer][i][j] = round2(weights[layer][i][j] + delta);
+        weights[layer][i][j] += delta;
       }
       matrix.push(row);
     }
     const biasRow = [];
     for (let j = 0; j < biases[layer].length; j++) {
-      const delta = round2(sumBiases[layer][j] / count);
+      const delta = sumBiases[layer][j] / count;
       biasRow.push(delta);
-      biases[layer][j] = round2(biases[layer][j] + delta);
+      biases[layer][j] += delta;
     }
     weightDeltas.push(matrix);
     biasDeltas.push(biasRow);
@@ -432,17 +433,27 @@ function targetsReached() {
   return true;
 }
 
-function setPlaying(on) {
-  playing = on;
-  if (!on) stopRequested = false;
+function updatePlayLocks() {
   const ids = [
     "step", "run", "infer", "random-weights", "reset-weights",
     "add-record", "add-input", "remove-input", "add-layer", "steps",
     "output-mode", "learning-rate",
   ];
-  for (let i = 0; i < ids.length; i++) document.getElementById(ids[i]).disabled = on;
-  document.getElementById("stop").disabled = !on;
-  if (!on) document.getElementById("remove-input").disabled = inputNames.length <= 1;
+  for (let i = 0; i < ids.length; i++) document.getElementById(ids[i]).disabled = playing;
+  const stop = document.getElementById("stop-run");
+  if (playing) {
+    stop.removeAttribute("disabled");
+    stop.disabled = false;
+  } else {
+    stop.disabled = true;
+    document.getElementById("remove-input").disabled = inputNames.length <= 1;
+  }
+}
+
+function setPlaying(on) {
+  playing = on;
+  if (!on) stopRequested = false;
+  updatePlayLocks();
 }
 
 function requestStop() {
@@ -460,6 +471,7 @@ async function runPasses(count, stopWhenReached) {
     document.getElementById("readout").textContent = "Targets already reached. Run stopped.";
     return;
   }
+  stopRequested = false;
   setPlaying(true);
   let stopped = false;
   for (let pass = 0; pass < count; pass++) {
@@ -530,11 +542,11 @@ function randomWeights() {
   for (let layer = 0; layer < weights.length; layer++) {
     for (let i = 0; i < weights[layer].length; i++) {
       for (let j = 0; j < weights[layer][i].length; j++) {
-        weights[layer][i][j] = round2(Math.random() * 2 - 1);
+        weights[layer][i][j] = Math.random() * 2 - 1;
       }
     }
     for (let j = 0; j < biases[layer].length; j++) {
-      biases[layer][j] = round2(Math.random() * 2 - 1);
+      biases[layer][j] = Math.random() * 2 - 1;
     }
   }
   lastChange = null;
@@ -895,6 +907,7 @@ function render() {
   renderLayers();
   renderTable();
   renderDiagram();
+  updatePlayLocks();
 }
 
 function addRecord() {
@@ -969,7 +982,7 @@ document.addEventListener("DOMContentLoaded", function start() {
   document.getElementById("remove-input").addEventListener("click", removeInput);
   document.getElementById("step").addEventListener("click", function onStep() { runPasses(1, false); });
   document.getElementById("run").addEventListener("click", function onRun() { runPasses(requestedPasses(), true); });
-  document.getElementById("stop").addEventListener("click", requestStop);
+  document.getElementById("stop-run").addEventListener("click", requestStop);
   document.getElementById("infer").addEventListener("click", inferOne);
   document.getElementById("random-weights").addEventListener("click", randomWeights);
   document.getElementById("reset-weights").addEventListener("click", resetWeights);

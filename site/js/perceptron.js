@@ -3,6 +3,7 @@
 // z = bias + x1 * w1 + x2 * w2 + ...
 //
 // One step visits every row with the same weights, then adds the average pull.
+// Stored weights keep full precision. The page only rounds numbers for display.
 // Update for the selected activation, before that average:
 //   Step:    delta = learningRate * (target - output) * input
 //   Linear:  same, because the slope is 1
@@ -169,19 +170,29 @@ function predictRow(row) {
   return activate(activationName(), weightedSum(row.values));
 }
 
-function setPlaying(on) {
-  playing = on;
-  if (!on) stopRequested = false;
+function updatePlayLocks() {
   const ids = [
     "step", "run", "infer", "random-weights", "reset-weights",
     "add-record", "add-input", "remove-input", "steps",
     "output-mode", "activation", "learning-rate",
   ];
   for (let i = 0; i < ids.length; i++) {
-    document.getElementById(ids[i]).disabled = on;
+    document.getElementById(ids[i]).disabled = playing;
   }
-  document.getElementById("stop").disabled = !on;
-  if (!on) document.getElementById("remove-input").disabled = inputNames.length <= 1;
+  const stop = document.getElementById("stop-run");
+  if (playing) {
+    stop.removeAttribute("disabled");
+    stop.disabled = false;
+  } else {
+    stop.disabled = true;
+    document.getElementById("remove-input").disabled = inputNames.length <= 1;
+  }
+}
+
+function setPlaying(on) {
+  playing = on;
+  if (!on) stopRequested = false;
+  updatePlayLocks();
 }
 
 function requestStop() {
@@ -266,9 +277,9 @@ function removeInput() {
 function randomWeights() {
   if (playing) return;
   for (let i = 0; i < weights.length; i++) {
-    weights[i] = round2(Math.random() * 2 - 1);
+    weights[i] = Math.random() * 2 - 1;
   }
-  bias = round2(Math.random() * 2 - 1);
+  bias = Math.random() * 2 - 1;
   lastChange = null;
   shown = null;
   render();
@@ -312,12 +323,12 @@ function applyAverage(sumWeights, sumBias, count) {
   const oldBias = bias;
   const weightDeltas = [];
   for (let i = 0; i < weights.length; i++) {
-    const delta = round2(sumWeights[i] / count);
+    const delta = sumWeights[i] / count;
     weightDeltas.push(delta);
-    weights[i] = round2(weights[i] + delta);
+    weights[i] += delta;
   }
-  const biasDelta = round2(sumBias / count);
-  bias = round2(bias + biasDelta);
+  const biasDelta = sumBias / count;
+  bias += biasDelta;
   lastChange = {
     weightDeltas: weightDeltas,
     biasDelta: biasDelta,
@@ -377,6 +388,7 @@ async function runPasses(count, stopWhenReached) {
     document.getElementById("readout").textContent = "Targets already reached. Run stopped.";
     return;
   }
+  stopRequested = false;
   setPlaying(true);
   let stopped = false;
   for (let pass = 0; pass < count; pass++) {
@@ -660,6 +672,7 @@ function render() {
   renderFormula();
   renderTable();
   renderDiagram();
+  updatePlayLocks();
 }
 
 document.addEventListener("DOMContentLoaded", function start() {
@@ -676,7 +689,7 @@ document.addEventListener("DOMContentLoaded", function start() {
   document.getElementById("run").addEventListener("click", function onRun() {
     runPasses(requestedPasses(), true);
   });
-  document.getElementById("stop").addEventListener("click", requestStop);
+  document.getElementById("stop-run").addEventListener("click", requestStop);
   document.getElementById("infer").addEventListener("click", inferOne);
   document.getElementById("random-weights").addEventListener("click", randomWeights);
   document.getElementById("reset-weights").addEventListener("click", resetWeights);
