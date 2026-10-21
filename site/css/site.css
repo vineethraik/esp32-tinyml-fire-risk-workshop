@@ -297,3 +297,69 @@ td select.activation-choice {
   font: 13px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
 
+.warning {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--neg);
+  border-radius: 8px;
+  background: white;
+  color: var(--muted);
+  font: 14px/1.4 ui-sans-serif, system-ui, sans-serif;
+}
+
+.score-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  margin-bottom: 12px;
+}
+
+.score-label {
+  font: 13px/1.2 ui-sans-serif, system-ui, sans-serif;
+  color: var(--muted);
+}
+
+.score-value {
+  font: 650 1.6rem/1.2 ui-sans-serif, system-ui, sans-serif;
+  color: var(--ink);
+}
+
+table.confusion th,
+table.confusion td {
+  text-align: center;
+  min-width: 4.5rem;
+}
+
+table.confusion td.diag {
+  background: var(--highlight);
+  font-weight: 650;
+}
+
+.prob-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 8px;
+}
+
+.prob-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  font: 14px/1.2 ui-sans-serif, system-ui, sans-serif;
+}
+
+.prob-cell span {
+  font: 650 1.1rem/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+#schematic,
+#diagram {
+  display: block;
+  min-height: 180px;
+}
+
