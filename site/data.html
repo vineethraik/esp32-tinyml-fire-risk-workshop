@@ -6,6 +6,7 @@
   <title>Data</title>
   <link rel="stylesheet" href="css/site.css">
   <script src="js/nav.js"></script>
+  <script src="js/data.js"></script>
 </head>
 <body data-page="data.html">
   <header>
@@ -13,8 +14,79 @@
     <nav data-site-nav></nav>
   </header>
   <main>
-    <h2>Data</h2>
-    <p class="lede">Windows, labels, and the time split come next. Use the top navigation to open Perceptron or Neural net.</p>
+    <p class="lede">Raw DHT readings become <strong>windows</strong>, then a <strong>20-number feature vector</strong>, then a <strong>label</strong>. The first complete window is a warm-up (start at reading 2), matching the Python labeling script. This page uses a short teaching series, not the full supplied CSV. The math is in <code>js/data.js</code>.</p>
+    <div class="stack">
+      <section>
+        <h2>Series</h2>
+        <div class="controls">
+          <label>Window start
+            <input id="window-start" type="range" min="1" max="1" value="1" step="1">
+          </label>
+          <button type="button" id="window-prev" class="secondary">−</button>
+          <button type="button" id="window-next" class="secondary">+</button>
+        </div>
+        <p id="series-meta" class="formula"></p>
+        <div class="diagram-frame">
+          <svg id="series-chart" role="img" aria-label="Temperature and humidity over time"></svg>
+        </div>
+        <p class="chart-legend"><span class="legend-temp">Temperature</span> <span class="legend-hum">Humidity</span> <span class="legend-window">Current window</span> <span class="legend-split">Time split</span></p>
+      </section>
+      <section>
+        <h2>Current window</h2>
+        <p id="window-meta" class="formula"></p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Time (s)</th>
+                <th>temp_c</th>
+                <th>humidity_pct</th>
+              </tr>
+            </thead>
+            <tbody id="window-body"></tbody>
+          </table>
+        </div>
+        <h3 class="subhead">20-feature vector</h3>
+        <p class="formula">Order is temp, humidity for each of the ten readings: temp0, hum0, …, temp9, hum9.</p>
+        <div id="feature-vector" class="feature-grid"></div>
+      </section>
+      <section>
+        <h2>Label</h2>
+        <div class="controls">
+          <label>Class
+            <select id="label-choice">
+              <option value="NORMAL">NORMAL</option>
+              <option value="ELEVATED_THERMAL_RISK">ELEVATED_THERMAL_RISK</option>
+              <option value="HIGH_THERMAL_RISK">HIGH_THERMAL_RISK</option>
+            </select>
+          </label>
+          <button type="button" id="save-label">Save label</button>
+          <button type="button" id="clear-label" class="secondary">Clear this window</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Window</th>
+                <th>Start–end</th>
+                <th>Δtemp</th>
+                <th>Label</th>
+                <th>Half</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="label-body"></tbody>
+          </table>
+        </div>
+      </section>
+      <section>
+        <h2>Time split</h2>
+        <p id="split-formula" class="formula"></p>
+        <p id="split-counts" class="formula"></p>
+        <pre id="readout">Load the teaching series, slide the window, then save a few labels.</pre>
+      </section>
+    </div>
   </main>
 </body>
 </html>
