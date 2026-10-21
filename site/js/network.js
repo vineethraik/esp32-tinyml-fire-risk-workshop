@@ -831,13 +831,31 @@ function renderDiagram() {
     }
   }
 
-  if (!hidden && scale > 0.62) {
+  // Weight boxes sit along each edge (not all at the midpoint) so crossing
+  // edges do not cover each other. Revert this block to restore midpoints only.
+  if (!hidden) {
     for (let layer = 0; layer < weights.length; layer++) {
-      if (weights[layer].length * biases[layer].length > 12) continue;
-      for (let i = 0; i < weights[layer].length; i++) {
-        for (let j = 0; j < weights[layer][i].length; j++) {
-          const x = (xAt(layer) + xAt(layer + 1)) / 2;
-          const y = (yAt(layer, i) + yAt(layer + 1, j)) / 2;
+      const fromCount = weights[layer].length;
+      const toCount = biases[layer].length;
+      const edgeTotal = fromCount * toCount;
+      if (edgeTotal > 48) continue;
+      for (let i = 0; i < fromCount; i++) {
+        for (let j = 0; j < toCount; j++) {
+          const x1 = xAt(layer) + nodeR;
+          const y1 = yAt(layer, i);
+          const x2 = xAt(layer + 1) - nodeR;
+          const y2 = yAt(layer + 1, j);
+          const edgeIndex = i * toCount + j;
+          const t = edgeTotal <= 1 ? 0.5 : 0.28 + 0.44 * (edgeIndex / (edgeTotal - 1));
+          let x = x1 + (x2 - x1) * t;
+          let y = y1 + (y2 - y1) * t;
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          const side = edgeIndex % 2 === 0 ? 1 : -1;
+          const nudge = 6 * scale * side;
+          x += (-dy / len) * nudge;
+          y += (dx / len) * nudge;
           const delta = lastChange ? lastChange.weightDeltas[layer][i][j] : null;
           drawWeightBox(svg, svgNs, x, y, scale, "w", weights[layer][i][j], delta, false);
         }
