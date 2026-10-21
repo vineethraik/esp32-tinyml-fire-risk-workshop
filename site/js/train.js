@@ -495,8 +495,11 @@ function renderDiagram() {
   const hidden = valuesHidden();
   const columns = 3;
   const tallest = Math.max(INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE);
-  const gapX = Math.max(120, 150 * scale);
-  const width = 48 + columns * gapX;
+  // Stretch columns across the frame. Revert the wide-diagram commit to restore fixed gapX.
+  const available = diagramFrameWidth(svg, 520);
+  const minGap = Math.max(120, 150 * scale);
+  const gapX = Math.max(minGap, (available - 48) / columns);
+  const width = Math.max(available, 48 + columns * gapX);
   const height = Math.max(220, 28 + tallest * gapY + 8);
   svg.setAttribute("viewBox", "0 0 " + width + " " + height);
   svg.setAttribute("width", String(width));
@@ -787,6 +790,7 @@ document.addEventListener("DOMContentLoaded", function start() {
   document.getElementById("average-update").addEventListener("change", function onAvg() {
     render();
   });
+  watchDiagramResize(render);
   loadWindows().catch(function onError(error) {
     document.getElementById("readout").textContent = error.message;
   });

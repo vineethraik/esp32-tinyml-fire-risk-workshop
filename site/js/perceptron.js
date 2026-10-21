@@ -575,7 +575,8 @@ function renderDiagram() {
   const svgNs = "http://www.w3.org/2000/svg";
   const rowHeight = 88;
   const top = 48;
-  const width = 860;
+  // Stretch columns across the frame. Revert the wide-diagram commit to restore width 860.
+  const width = diagramFrameWidth(svg, 860);
   const yAt = function yOf(index) {
     return top + index * rowHeight;
   };
@@ -585,12 +586,16 @@ function renderDiagram() {
   const yBias = ySum + 120;
   const height = Math.max(300, yBias + 56);
   svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
 
-  const xIn = 80;
-  const xBox = 270;
-  const xSum = 480;
-  const xAct = 650;
-  const xOut = 790;
+  const margin = 80;
+  const span = width - 2 * margin;
+  const xIn = margin + span * 0.00;
+  const xBox = margin + span * 0.27;
+  const xSum = margin + span * 0.54;
+  const xAct = margin + span * 0.75;
+  const xOut = margin + span * 0.94;
 
   for (let i = 0; i < inputNames.length; i++) {
     const y = yAt(i);
@@ -708,6 +713,7 @@ document.addEventListener("DOMContentLoaded", function start() {
   document.getElementById("infer").addEventListener("click", inferOne);
   document.getElementById("random-weights").addEventListener("click", randomWeights);
   document.getElementById("reset-weights").addEventListener("click", resetWeights);
+  watchDiagramResize(render);
   loadProvidedDataset().catch(function onLoadError(error) {
     document.getElementById("readout").textContent = error.message;
   });

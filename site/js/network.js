@@ -782,12 +782,15 @@ function renderDiagram() {
   const nodeR = Math.max(12, 26 * scale);
   const biasH = 20 * scale;
   const gapY = nodeR * 2 + biasH + 18 * scale;
-  const gapX = Math.max(108, 168 * scale);
   const hidden = valuesHidden();
   const columns = hiddenSizes.length + 2;
   let tallest = inputNames.length;
   for (let i = 0; i < hiddenSizes.length; i++) tallest = Math.max(tallest, hiddenSizes[i]);
-  const width = 48 + columns * gapX;
+  // Stretch columns across the frame. Revert the wide-diagram commit to restore fixed gapX.
+  const available = diagramFrameWidth(svg, 480);
+  const minGap = Math.max(108, 168 * scale);
+  const gapX = Math.max(minGap, (available - 48) / Math.max(1, columns));
+  const width = Math.max(available, 48 + columns * gapX);
   const height = Math.max(220, 28 + tallest * gapY + 8);
   svg.setAttribute("viewBox", "0 0 " + width + " " + height);
   svg.setAttribute("width", String(width));
@@ -1020,6 +1023,7 @@ document.addEventListener("DOMContentLoaded", function start() {
   document.getElementById("random-weights").addEventListener("click", randomWeights);
   document.getElementById("reset-weights").addEventListener("click", resetWeights);
   document.getElementById("hide-values").addEventListener("click", toggleValues);
+  watchDiagramResize(render);
   loadProvidedDataset().catch(function onLoadError(error) {
     document.getElementById("readout").textContent = error.message;
   });

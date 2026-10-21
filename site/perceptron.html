@@ -6,6 +6,7 @@
   <title>Perceptron</title>
   <link rel="stylesheet" href="css/site.css">
   <script src="js/nav.js"></script>
+  <script src="js/diagram_layout.js"></script>
   <script src="js/perceptron.js"></script>
 </head>
 <body data-page="perceptron.html">
@@ -66,7 +67,9 @@
           </label>
         </div>
         <p id="formula" class="formula"></p>
-        <svg id="diagram" role="img" aria-label="Perceptron diagram"></svg>
+        <div class="diagram-frame">
+          <svg id="diagram" role="img" aria-label="Perceptron diagram"></svg>
+        </div>
         <pre id="readout">Weights start at 0. Press Step to use row 1.</pre>
       </section>
     </div>
