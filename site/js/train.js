@@ -32,6 +32,8 @@ let playing = false;
 let stopRequested = false;
 let hideValues = false;
 let hideTouched = false;
+let dataSource = "teaching";
+let sourceNote = "";
 
 function sleep(ms) {
   return new Promise(function wake(resolve) {
@@ -346,11 +348,15 @@ function perfectAccuracy() {
 }
 
 function updatePlayLocks() {
+  const empty = X.length === 0;
+  const lock = playing || empty;
   const ids = [
     "step", "run", "infer", "random-weights", "reset-weights",
     "steps", "learning-rate", "average-update",
   ];
-  for (let i = 0; i < ids.length; i++) document.getElementById(ids[i]).disabled = playing;
+  for (let i = 0; i < ids.length; i++) document.getElementById(ids[i]).disabled = lock;
+  const source = document.getElementById("data-source");
+  if (source) source.disabled = playing;
   const stop = document.getElementById("stop-run");
   if (playing) {
     stop.removeAttribute("disabled");
@@ -660,12 +666,86 @@ function drawText(svg, svgNs, x, y, label, color, size) {
   svg.appendChild(text);
 }
 
+function selectedSource() {
+  const el = document.getElementById("data-source");
+  return el ? el.value : "teaching";
+}
+
+function sourceFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const source = params.get("source");
+    if (source === "student") return "student";
+  } catch (error) {
+    // Ignore bad query strings.
+  }
+  return "teaching";
+}
+
+function ingestWindows(rows, note) {
+  rawFeatures = [];
+  labels = [];
+  meta = [];
+  sourceNote = note || "";
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row.features || row.features.length !== INPUT_SIZE) {
+      throw new Error("Window " + (i + 1) + " must have " + INPUT_SIZE + " features");
+    }
+    const labelIndex = LABELS.indexOf(row.label);
+    if (labelIndex < 0) throw new Error("Unknown label: " + row.label);
+    rawFeatures.push(row.features.slice());
+    labels.push(labelIndex);
+    meta.push({
+      id: row.id || (i + 1),
+      start_index: row.start_index,
+      end_index: row.end_index,
+      last_temp_c: row.last_temp_c,
+      temp_change_c: row.temp_change_c,
+    });
+  }
+  if (rawFeatures.length === 0) {
+    mean = [];
+    scale = [];
+    X = [];
+    zeroWeights();
+    stepCount = 0;
+    activeRow = -1;
+    nextInfer = 0;
+    lastProbs = null;
+    lastChange = null;
+    lastChangeNote = sourceNote || "No windows loaded.";
+    render();
+    return;
+  }
+  normalizeFeatures();
+  zeroWeights();
+  stepCount = 0;
+  activeRow = -1;
+  nextInfer = 0;
+  lastProbs = null;
+  lastChange = null;
+  lastChangeNote = "Loaded " + X.length + " windows. Press Random weights, then Step.";
+  render();
+}
+
 function renderWindows() {
   const body = document.getElementById("windows-body");
   body.textContent = "";
   const score = scores();
+  const sourceLine = dataSource === "student"
+    ? "Source: early labels from Data lesson"
+    : "Source: teaching windows (JSON)";
   document.getElementById("windows-meta").textContent =
-    X.length + " windows  ·  features normalized with training mean/scale";
+    X.length + " windows  ·  " + sourceLine
+    + "  ·  features normalized with training mean/scale";
+  const sourceMeta = document.getElementById("source-meta");
+  if (sourceMeta) {
+    sourceMeta.textContent = sourceNote
+      || (dataSource === "student"
+        ? "Train on windows you labeled early on the Data page. Late labels stay hold-out."
+        : "Built-in teaching set. Swap to your early labels after you save them on Data.");
+  }
   for (let r = 0; r < meta.length; r++) {
     const tr = document.createElement("tr");
     if (r === activeRow) tr.className = "active";
@@ -744,38 +824,44 @@ function render() {
   updatePlayLocks();
 }
 
-async function loadWindows() {
+async function loadTeachingWindows() {
   const response = await fetch("data/thermal_windows.json");
   if (!response.ok) throw new Error("Could not load data/thermal_windows.json");
   const data = await response.json();
-  rawFeatures = [];
-  labels = [];
-  meta = [];
-  for (let i = 0; i < data.windows.length; i++) {
-    const row = data.windows[i];
-    if (!row.features || row.features.length !== INPUT_SIZE) {
-      throw new Error("Window " + (i + 1) + " must have " + INPUT_SIZE + " features");
-    }
-    const labelIndex = LABELS.indexOf(row.label);
-    if (labelIndex < 0) throw new Error("Unknown label: " + row.label);
-    rawFeatures.push(row.features.slice());
-    labels.push(labelIndex);
-    meta.push({
-      id: row.id || (i + 1),
-      start_index: row.start_index,
-      end_index: row.end_index,
-      last_temp_c: row.last_temp_c,
-      temp_change_c: row.temp_change_c,
-    });
+  dataSource = "teaching";
+  ingestWindows(data.windows || [], data.note || "Teaching windows from thermal_windows.json.");
+}
+
+function loadStudentWindows() {
+  const store = readStudentStore();
+  dataSource = "student";
+  const early = store.early || [];
+  const late = store.late || [];
+  if (early.length === 0) {
+    ingestWindows([], "No early labels yet. Open Data, label early-half windows, then come back.");
+    return;
   }
-  normalizeFeatures();
-  zeroWeights();
-  render();
-  document.getElementById("readout").textContent =
-    "Loaded " + X.length + " windows. Press Random weights, then Step.";
+  const note = "Your early labels: " + early.length + " train windows"
+    + "  ·  " + late.length + " late hold-out (not used here yet)"
+    + "  ·  split_at " + store.split_at;
+  ingestWindows(early, note);
+}
+
+async function loadWindows() {
+  if (selectedSource() === "student") loadStudentWindows();
+  else await loadTeachingWindows();
 }
 
 document.addEventListener("DOMContentLoaded", function start() {
+  const sourceSelect = document.getElementById("data-source");
+  const initial = sourceFromUrl();
+  sourceSelect.value = initial;
+  dataSource = initial;
+  sourceSelect.addEventListener("change", function onSourceChange() {
+    loadWindows().catch(function onError(error) {
+      document.getElementById("readout").textContent = error.message;
+    });
+  });
   document.getElementById("step").addEventListener("click", function onStep() {
     runPasses(1, false);
   });

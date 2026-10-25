@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="css/site.css">
   <script src="js/nav.js"></script>
   <script src="js/diagram_layout.js"></script>
+  <script src="js/student_windows.js"></script>
   <script src="js/train.js"></script>
 </head>
 <body data-page="train.html">
@@ -15,8 +16,20 @@
     <nav data-site-nav></nav>
   </header>
   <main>
-    <p class="lede">Workshop-shaped net: <strong>20 → 12 ReLU → 3 Softmax</strong>. Step trains every window once. Scores are <strong>training-set only</strong> on a tiny teaching set — not real-world safety proof. The math is in <code>js/train.js</code>.</p>
+    <p class="lede">Workshop-shaped net: <strong>20 → 12 ReLU → 3 Softmax</strong>. Step trains every window once. Use the teaching JSON, or your <strong>early-half labels</strong> from the Data lesson. Scores are <strong>training-set only</strong> — not real-world safety proof. The math is in <code>js/train.js</code>.</p>
     <div class="stack">
+      <section>
+        <h2>Training material</h2>
+        <div class="controls">
+          <label>Source
+            <select id="data-source">
+              <option value="teaching">Teaching windows (JSON)</option>
+              <option value="student">My early labels (Data lesson)</option>
+            </select>
+          </label>
+        </div>
+        <p id="source-meta" class="formula"></p>
+      </section>
       <section>
         <h2>Network</h2>
         <p id="net-formula" class="formula">20 inputs → 12 hidden (ReLU) → 3 outputs (Softmax). Inputs are normalized with mean and scale from these windows. Lines show every weight; use Hide values when the boxes crowd.</p>

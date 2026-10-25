@@ -157,6 +157,24 @@ button.secondary {
   color: var(--accent-ink);
 }
 
+a.button-link {
+  display: inline-block;
+  padding: 7px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: white;
+  color: var(--accent-ink);
+  text-decoration: none;
+  font: 14px/1.2 ui-sans-serif, system-ui, sans-serif;
+}
+
+a.button-link.disabled-link,
+a.button-link[aria-disabled="true"] {
+  opacity: 0.45;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
 button.delete {
   background: white;
   color: var(--neg);

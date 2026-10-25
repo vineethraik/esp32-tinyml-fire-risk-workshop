@@ -3,7 +3,7 @@
 // Sample every sampleSeconds. One window is ten consecutive readings.
 // Feature order matches the workshop: temp0, hum0, temp1, hum1, ..., temp9, hum9.
 // Window starts begin at 1 so readings 0..9 are a warm-up, like prepare_labeling_windows.py.
-// Labels stay in page memory only. No model training on this page.
+// Labels are saved to localStorage. Early-half windows feed the Train lesson.
 
 const WINDOW_SAMPLES = 10;
 const LABEL_NAMES = ["NORMAL", "ELEVATED_THERMAL_RISK", "HIGH_THERMAL_RISK"];
@@ -155,6 +155,7 @@ function renderLabels() {
     del.textContent = "Delete";
     del.addEventListener("click", function onDelete() {
       delete labelsByStart[start];
+      persistLabelsForTrain();
       render();
     });
     action.appendChild(del);
@@ -323,15 +324,78 @@ function render() {
   renderSplit();
 }
 
+function labeledWindowRecord(start, label) {
+  const rows = windowAt(start);
+  const end = start + WINDOW_SAMPLES - 1;
+  return {
+    id: start,
+    start_index: start,
+    end_index: end,
+    last_temp_c: rows[rows.length - 1].temp_c,
+    temp_change_c: tempChange(rows),
+    features: featureVector(rows),
+    label: label,
+    half: halfName(start),
+  };
+}
+
+function persistLabelsForTrain() {
+  const store = emptyStudentStore();
+  store.sample_seconds = sampleSeconds;
+  store.split_at = splitAt();
+  const starts = Object.keys(labelsByStart).map(Number).sort(function byStart(a, b) { return a - b; });
+  for (let i = 0; i < starts.length; i++) {
+    const start = starts[i];
+    const record = labeledWindowRecord(start, labelsByStart[start]);
+    if (record.half === "early") store.early.push(record);
+    else store.late.push(record);
+  }
+  // Renumber ids 1..n inside each half for the Train table.
+  for (let i = 0; i < store.early.length; i++) store.early[i].id = i + 1;
+  for (let i = 0; i < store.late.length; i++) store.late[i].id = i + 1;
+  writeStudentStore(store);
+  const link = document.getElementById("open-train");
+  const meta = document.getElementById("train-export-meta");
+  if (store.early.length === 0) {
+    link.setAttribute("aria-disabled", "true");
+    link.classList.add("disabled-link");
+    meta.textContent = "Label at least one early-half window to train. Late labels stay hold-out ("
+      + store.late.length + " saved).";
+  } else {
+    link.removeAttribute("aria-disabled");
+    link.classList.remove("disabled-link");
+    meta.textContent = "Saved for Train: " + store.early.length + " early (train)"
+      + "  ·  " + store.late.length + " late (hold-out).";
+  }
+}
+
+function restoreLabelsFromStore() {
+  const store = readStudentStore();
+  labelsByStart = {};
+  const valid = {};
+  const starts = possibleStarts();
+  for (let i = 0; i < starts.length; i++) valid[starts[i]] = true;
+  const all = store.early.concat(store.late);
+  for (let i = 0; i < all.length; i++) {
+    const row = all[i];
+    if (row && Number.isFinite(row.start_index) && row.label && valid[row.start_index]
+        && LABEL_NAMES.indexOf(row.label) >= 0) {
+      labelsByStart[row.start_index] = row.label;
+    }
+  }
+}
+
 function saveLabel() {
   const choice = document.getElementById("label-choice").value;
   if (LABEL_NAMES.indexOf(choice) < 0) return;
   labelsByStart[windowStart] = choice;
+  persistLabelsForTrain();
   render();
 }
 
 function clearLabel() {
   delete labelsByStart[windowStart];
+  persistLabelsForTrain();
   render();
 }
 
@@ -352,8 +416,9 @@ async function loadSeries() {
       humidity_pct: Number(data.readings[i].humidity_pct),
     });
   }
-  labelsByStart = {};
   windowStart = 1;
+  restoreLabelsFromStore();
+  persistLabelsForTrain();
   render();
   document.getElementById("readout").textContent =
     "Series loaded. Slide the window. Save labels on early and late halves.";
