@@ -136,6 +136,10 @@ input[type="range"] {
   accent-color: var(--accent);
 }
 
+input[type="file"] {
+  max-width: 16rem;
+}
+
 input[type="checkbox"] {
   width: 1.15rem;
   height: 1.15rem;

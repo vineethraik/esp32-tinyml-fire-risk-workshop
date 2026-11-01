@@ -5,6 +5,8 @@
 
 const BAUD = 115200;
 const MAX_LINES = 2000;
+const CSV_CHUNK = 256;
+const CSV_RETRIES = 3;
 
 let port = null;
 let reader = null;
@@ -14,6 +16,18 @@ let writeChain = Promise.resolve();
 const lines = [];
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+
+const csv = {
+  active: false,
+  phase: "idle",
+  expected: 0,
+  offset: 0,
+  wanted: 0,
+  attempt: 0,
+  ack: false,
+  rows: [],
+  chunkRows: [],
+};
 
 function serialSupported() {
   return Boolean(navigator.serial);
@@ -28,14 +42,15 @@ function setStatus(text) {
 }
 
 function commandControls() {
-  return document.querySelectorAll(".cmd, #export-range, #export-offset, #export-count");
+  return document.querySelectorAll(".cmd, #export-range, #export-offset, #export-count, #export-csv");
 }
 
 function setConnected(on) {
   $("connect").disabled = on || !serialSupported();
   $("disconnect").disabled = !on;
+  const lock = !on || csv.active;
   const controls = commandControls();
-  for (let i = 0; i < controls.length; i++) controls[i].disabled = !on;
+  for (let i = 0; i < controls.length; i++) controls[i].disabled = lock;
 }
 
 function monitorEl() {
@@ -58,6 +73,7 @@ function appendLine(text) {
   lines.push(text);
   while (lines.length > MAX_LINES) lines.shift();
   renderMonitor();
+  processCsvLine(text);
 }
 
 function clearMonitor() {
@@ -94,6 +110,127 @@ function sendCommand(command) {
   }).catch(function onWriteFail() {
     // Keep the queue alive after a failed write.
   });
+}
+
+function parseTaggedFields(line) {
+  const parts = line.split(",");
+  const fields = {};
+  for (let i = 1; i < parts.length; i++) {
+    const eq = parts[i].indexOf("=");
+    if (eq < 0) continue;
+    fields[parts[i].slice(0, eq)] = parts[i].slice(eq + 1);
+  }
+  return fields;
+}
+
+function downloadCsv(rows) {
+  let body = "sequence,temp_c,humidity_pct\n";
+  for (let i = 0; i < rows.length; i++) body += rows[i].join(",") + "\n";
+  const blob = new Blob([body], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "thermal_export.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function finishCsv(ok, note) {
+  const rows = csv.rows.slice();
+  csv.active = false;
+  csv.phase = "idle";
+  csv.rows = [];
+  csv.chunkRows = [];
+  setConnected(Boolean(port));
+  appendLine(note);
+  if (ok) downloadCsv(rows);
+}
+
+function beginCsvChunk() {
+  csv.wanted = Math.min(CSV_CHUNK, csv.expected - csv.offset);
+  csv.attempt = 1;
+  csv.ack = false;
+  csv.chunkRows = [];
+  csv.phase = "chunk";
+  appendLine("csv chunk offset=" + csv.offset + "/" + csv.expected);
+  sendCommand("AT+EXPORT," + csv.offset + "," + csv.wanted);
+}
+
+function retryCsvChunk() {
+  csv.attempt += 1;
+  if (csv.attempt > CSV_RETRIES) {
+    finishCsv(false, "csv abort chunk at " + csv.offset);
+    return;
+  }
+  csv.ack = false;
+  csv.chunkRows = [];
+  appendLine("csv retry " + csv.attempt + " offset=" + csv.offset);
+  sendCommand("AT+EXPORT," + csv.offset + "," + csv.wanted);
+}
+
+function processCsvLine(line) {
+  if (!csv.active) return;
+  if (line.indexOf(">> ") === 0) return;
+  if (line.indexOf("csv ") === 0) return;
+  if (line.indexOf("ERR+") === 0) {
+    finishCsv(false, "csv abort " + line);
+    return;
+  }
+  if (csv.phase === "status") {
+    if (line.indexOf("ACK+STATUS,") === 0) {
+      const n = parseInt(parseTaggedFields(line).records, 10);
+      csv.expected = Number.isFinite(n) ? n : 0;
+      return;
+    }
+    if (line === "OK+STATUS") {
+      if (csv.expected === 0) {
+        finishCsv(false, "csv no records");
+        return;
+      }
+      beginCsvChunk();
+    }
+    return;
+  }
+  if (csv.phase !== "chunk") return;
+  if (line.indexOf("ACK+EXPORT,") === 0) {
+    csv.ack = true;
+    return;
+  }
+  if (line.indexOf("DATA,") === 0) {
+    const parts = line.split(",");
+    if (parts.length >= 4) csv.chunkRows.push([parts[1], parts[2], parts[3]]);
+    return;
+  }
+  if (line.indexOf("OK+EXPORT,") === 0) {
+    const sent = parseInt(parseTaggedFields(line).records, 10);
+    if (csv.ack && sent === csv.wanted && csv.chunkRows.length === csv.wanted) {
+      for (let i = 0; i < csv.chunkRows.length; i++) csv.rows.push(csv.chunkRows[i]);
+      csv.offset += csv.wanted;
+      if (csv.offset >= csv.expected) {
+        finishCsv(true, "csv saved " + csv.rows.length + " rows");
+        return;
+      }
+      beginCsvChunk();
+      return;
+    }
+    retryCsvChunk();
+  }
+}
+
+function startCsvExport() {
+  if (!port || !port.writable || csv.active) return;
+  csv.active = true;
+  csv.phase = "status";
+  csv.expected = 0;
+  csv.offset = 0;
+  csv.wanted = 0;
+  csv.attempt = 0;
+  csv.ack = false;
+  csv.rows = [];
+  csv.chunkRows = [];
+  setConnected(true);
+  appendLine("csv export start");
+  sendCommand("AT+STATUS");
 }
 
 function exportRangeCommand() {
@@ -149,6 +286,13 @@ async function closePort(note) {
     port.removeEventListener("disconnect", onPortDisconnect);
   }
   port = null;
+  if (csv.active) {
+    csv.active = false;
+    csv.phase = "idle";
+    csv.rows = [];
+    csv.chunkRows = [];
+    appendLine("csv abort disconnected");
+  }
   setConnected(false);
   setStatus(note || "disconnected");
 }
@@ -219,6 +363,7 @@ document.addEventListener("DOMContentLoaded", function start() {
   });
   $("clear-monitor").addEventListener("click", clearMonitor);
   $("export-range").addEventListener("click", exportRangeCommand);
+  $("export-csv").addEventListener("click", startCsvExport);
 
   const buttons = document.querySelectorAll(".cmd");
   for (let i = 0; i < buttons.length; i++) {

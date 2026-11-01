@@ -7,6 +7,8 @@
 
 const WINDOW_SAMPLES = 10;
 const LABEL_NAMES = ["NORMAL", "ELEVATED_THERMAL_RISK", "HIGH_THERMAL_RISK"];
+const MIN_SERIES_READINGS = WINDOW_SAMPLES + 1;
+const MAX_CSV_READINGS = 500;
 
 let readings = [];
 let sampleSeconds = 2;
@@ -436,24 +438,104 @@ function moveWindow(delta) {
   render();
 }
 
-async function loadSeries() {
+function splitCsvLine(line) {
+  const cells = [];
+  let cell = "";
+  for (let i = 0; i < line.length; i++) {
+    const ch = line.charAt(i);
+    if (ch === ",") {
+      cells.push(cell);
+      cell = "";
+    } else {
+      cell += ch;
+    }
+  }
+  cells.push(cell);
+  return cells;
+}
+
+function parseCsvSeries(text) {
+  const raw = String(text || "").replace(/^\uFEFF/, "").replace(/\r/g, "");
+  const lines = raw.split("\n");
+  let headerIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim()) {
+      headerIndex = i;
+      break;
+    }
+  }
+  if (headerIndex < 0) throw new Error("CSV is empty.");
+  const header = splitCsvLine(lines[headerIndex]);
+  const names = [];
+  for (let i = 0; i < header.length; i++) names.push(header[i].trim().toLowerCase());
+  const tempCol = names.indexOf("temp_c");
+  const humCol = names.indexOf("humidity_pct");
+  if (tempCol < 0 || humCol < 0) {
+    throw new Error("CSV needs temp_c and humidity_pct columns.");
+  }
+  const parsed = [];
+  let skipped = 0;
+  for (let i = headerIndex + 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const cells = splitCsvLine(lines[i]);
+    const temp = Number(cells[tempCol]);
+    const hum = Number(cells[humCol]);
+    if (!Number.isFinite(temp) || !Number.isFinite(hum)) {
+      skipped += 1;
+      continue;
+    }
+    parsed.push({ temp_c: temp, humidity_pct: hum });
+    if (parsed.length >= MAX_CSV_READINGS) break;
+  }
+  if (parsed.length < MIN_SERIES_READINGS) {
+    throw new Error("Need at least " + MIN_SERIES_READINGS + " valid readings for a window.");
+  }
+  return {
+    readings: parsed,
+    truncated: parsed.length >= MAX_CSV_READINGS,
+    skipped: skipped,
+  };
+}
+
+function applyReadings(rows, note, restoreLabels) {
+  sampleSeconds = 2;
+  readings = [];
+  for (let i = 0; i < rows.length; i++) {
+    readings.push({
+      temp_c: Number(rows[i].temp_c),
+      humidity_pct: Number(rows[i].humidity_pct),
+    });
+  }
+  windowStart = 1;
+  if (restoreLabels) restoreLabelsFromStore();
+  else labelsByStart = {};
+  if (restoreLabels) persistLabelsForTrain();
+  render();
+  document.getElementById("readout").textContent = note;
+}
+
+async function loadTeachingSeries() {
   const response = await fetch("data/thermal_series.json");
   if (!response.ok) throw new Error("Could not load data/thermal_series.json");
   const data = await response.json();
   sampleSeconds = data.sample_seconds || 2;
-  readings = [];
+  const rows = [];
   for (let i = 0; i < data.readings.length; i++) {
-    readings.push({
+    rows.push({
       temp_c: Number(data.readings[i].temp_c),
       humidity_pct: Number(data.readings[i].humidity_pct),
     });
   }
-  windowStart = 1;
-  restoreLabelsFromStore();
-  persistLabelsForTrain();
-  render();
-  document.getElementById("readout").textContent =
-    "Series loaded. Slide the window. Save labels on early and late halves.";
+  applyReadings(rows, "Teaching series loaded. Slide the window. Save labels on early and late halves.", true);
+}
+
+function loadCsvText(text) {
+  const parsed = parseCsvSeries(text);
+  let note = "Using CSV (" + parsed.readings.length + " readings). Teaching series is unchanged on disk.";
+  if (parsed.truncated) note += " Using first " + MAX_CSV_READINGS + " rows.";
+  if (parsed.skipped) note += " Skipped " + parsed.skipped + " invalid rows.";
+  note += " Save a label to send early windows to Train.";
+  applyReadings(parsed.readings, note, false);
 }
 
 document.addEventListener("DOMContentLoaded", function start() {
@@ -465,7 +547,29 @@ document.addEventListener("DOMContentLoaded", function start() {
   document.getElementById("window-next").addEventListener("click", function onNext() { moveWindow(1); });
   document.getElementById("save-label").addEventListener("click", saveLabel);
   document.getElementById("clear-label").addEventListener("click", clearLabel);
-  loadSeries().catch(function onLoadError(error) {
+  document.getElementById("load-teaching").addEventListener("click", function onTeaching() {
+    loadTeachingSeries().catch(function onLoadError(error) {
+      document.getElementById("readout").textContent = error.message;
+    });
+  });
+  document.getElementById("load-csv").addEventListener("change", function onFile(event) {
+    const file = event.target.files && event.target.files[0];
+    event.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function onRead() {
+      try {
+        loadCsvText(String(reader.result || ""));
+      } catch (error) {
+        document.getElementById("readout").textContent = error.message;
+      }
+    };
+    reader.onerror = function onReadError() {
+      document.getElementById("readout").textContent = "Could not read that CSV file.";
+    };
+    reader.readAsText(file);
+  });
+  loadTeachingSeries().catch(function onLoadError(error) {
     document.getElementById("readout").textContent = error.message;
   });
 });
