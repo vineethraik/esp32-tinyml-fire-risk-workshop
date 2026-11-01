@@ -66,6 +66,25 @@ function halfName(start) {
   return start < splitAt() ? "early" : "late";
 }
 
+function storedLabel(start) {
+  const key = String(Number(start));
+  return labelsByStart[key] || labelsByStart[Number(start)] || "";
+}
+
+function setStoredLabel(start, label) {
+  const n = Number(start);
+  delete labelsByStart[n];
+  labelsByStart[String(n)] = label;
+}
+
+function deleteStoredLabel(start) {
+  const n = Number(start);
+  const had = Boolean(storedLabel(n));
+  delete labelsByStart[n];
+  delete labelsByStart[String(n)];
+  return had;
+}
+
 function clampWindowStart(start) {
   const starts = possibleStarts();
   if (starts.length === 0) return 1;
@@ -102,12 +121,14 @@ function renderWindow() {
     }
     body.appendChild(tr);
   }
+  const current = storedLabel(windowStart);
   document.getElementById("window-meta").textContent =
     "Δtemp = " + formatNum(tempChange(rows)) + " °C"
     + "  ·  features = " + featureVector(rows).length
-    + "  ·  half = " + halfName(windowStart);
-  const current = labelsByStart[windowStart];
-  if (current) document.getElementById("label-choice").value = current;
+    + "  ·  half = " + halfName(windowStart)
+    + "  ·  label = " + (current || "none");
+  document.getElementById("label-choice").value = current;
+  document.getElementById("clear-label").disabled = !current;
   renderFeatures(rows);
 }
 
@@ -132,6 +153,8 @@ function renderLabels() {
   const starts = Object.keys(labelsByStart).map(Number).sort(function byStart(a, b) { return a - b; });
   for (let i = 0; i < starts.length; i++) {
     const start = starts[i];
+    const label = storedLabel(start);
+    if (!label) continue;
     const rows = windowAt(start);
     const end = start + WINDOW_SAMPLES - 1;
     const tr = document.createElement("tr");
@@ -140,7 +163,7 @@ function renderLabels() {
       String(i + 1),
       start + "–" + end,
       formatNum(tempChange(rows)),
-      labelsByStart[start],
+      label,
       halfName(start),
     ];
     for (let c = 0; c < cells.length; c++) {
@@ -154,7 +177,7 @@ function renderLabels() {
     del.className = "delete";
     del.textContent = "Delete";
     del.addEventListener("click", function onDelete() {
-      delete labelsByStart[start];
+      deleteStoredLabel(start);
       persistLabelsForTrain();
       render();
     });
@@ -346,7 +369,9 @@ function persistLabelsForTrain() {
   const starts = Object.keys(labelsByStart).map(Number).sort(function byStart(a, b) { return a - b; });
   for (let i = 0; i < starts.length; i++) {
     const start = starts[i];
-    const record = labeledWindowRecord(start, labelsByStart[start]);
+    const label = storedLabel(start);
+    if (!label) continue;
+    const record = labeledWindowRecord(start, label);
     if (record.half === "early") store.early.push(record);
     else store.late.push(record);
   }
@@ -380,23 +405,30 @@ function restoreLabelsFromStore() {
     const row = all[i];
     if (row && Number.isFinite(row.start_index) && row.label && valid[row.start_index]
         && LABEL_NAMES.indexOf(row.label) >= 0) {
-      labelsByStart[row.start_index] = row.label;
+      setStoredLabel(row.start_index, row.label);
     }
   }
 }
 
 function saveLabel() {
+  windowStart = clampWindowStart(Number(windowStart));
   const choice = document.getElementById("label-choice").value;
   if (LABEL_NAMES.indexOf(choice) < 0) return;
-  labelsByStart[windowStart] = choice;
+  setStoredLabel(windowStart, choice);
   persistLabelsForTrain();
   render();
+  document.getElementById("readout").textContent =
+    "Saved " + choice + " on window start " + windowStart + " (" + halfName(windowStart) + ").";
 }
 
 function clearLabel() {
-  delete labelsByStart[windowStart];
+  windowStart = clampWindowStart(Number(windowStart));
+  const had = deleteStoredLabel(windowStart);
   persistLabelsForTrain();
   render();
+  document.getElementById("readout").textContent = had
+    ? "Cleared label on window start " + windowStart + "."
+    : "Window start " + windowStart + " has no label.";
 }
 
 function moveWindow(delta) {
