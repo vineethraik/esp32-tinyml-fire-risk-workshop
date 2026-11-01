@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install</title>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <header>
+    <h1>Install</h1>
+  </header>
+  <main>
+    <p class="lede">PC tools for the workshop board. <strong>Git</strong>, <strong>VS Code</strong>, the <strong>PlatformIO IDE</strong> extension, and the <strong>CP210x</strong> USB driver. Windows, Linux, and macOS. This page is not part of the browser neuron lessons.</p>
+    <div class="os-tabs" role="tablist" aria-label="Operating system">
+      <button type="button" role="tab" id="tab-windows" aria-controls="panel-windows" data-os="windows">Windows</button>
+      <button type="button" role="tab" id="tab-linux" aria-controls="panel-linux" data-os="linux">Linux</button>
+      <button type="button" role="tab" id="tab-macos" aria-controls="panel-macos" data-os="macos">macOS</button>
+    </div>
+
+    <div id="panel-windows" class="os-panel" role="tabpanel" aria-labelledby="tab-windows">
+      <section>
+        <h2>1. Git</h2>
+        <p>Download the installer from <a href="https://git-scm.com/download/win">git-scm.com/download/win</a>. Run it. Leave the default editor if unsure.</p>
+        <p class="formula">Verify in Command Prompt or PowerShell: <code>git --version</code></p>
+      </section>
+      <section>
+        <h2>2. VS Code</h2>
+        <p>Download the Windows installer from <a href="https://code.visualstudio.com/download">code.visualstudio.com/download</a>. Install. Tick “Add to PATH” if the installer offers it.</p>
+        <p class="formula">Verify: open Visual Studio Code from the Start menu.</p>
+      </section>
+      <section>
+        <h2>3. PlatformIO IDE extension</h2>
+        <p>In VS Code: Extensions. Search <strong>PlatformIO IDE</strong> (<code>platformio.platformio-ide</code>). Install. Reload when asked. The first PlatformIO run may download the toolchain; that needs internet.</p>
+        <p class="formula">Verify: the PlatformIO alien icon appears in the VS Code sidebar.</p>
+      </section>
+      <section>
+        <h2>4. CP210x USB driver</h2>
+        <p>If the board is not detected, download Silicon Labs <a href="https://www.silabs.com/documents/public/software/CP210x_Windows_Drivers.zip">CP210x_Windows_Drivers.zip</a>. Unzip it. Run the installer inside. Plug the board in with a <strong>data</strong> USB cable.</p>
+        <p class="formula">Verify: Device Manager → Ports (COM &amp; LPT). A COM port should appear (name may differ).</p>
+      </section>
+    </div>
+
+    <div id="panel-linux" class="os-panel" role="tabpanel" aria-labelledby="tab-linux" hidden>
+      <section>
+        <h2>1. Git</h2>
+        <p>Debian/Ubuntu: <code>sudo apt update</code> then <code>sudo apt install git</code>. Fedora: <code>sudo dnf install git</code>.</p>
+        <p class="formula">Verify: <code>git --version</code></p>
+      </section>
+      <section>
+        <h2>2. VS Code</h2>
+        <p>Download the <code>.deb</code> or <code>.rpm</code> from <a href="https://code.visualstudio.com/download">code.visualstudio.com/download</a> and install with the distro package tool.</p>
+        <p class="formula">Verify: open VS Code, or run <code>code --version</code>.</p>
+      </section>
+      <section>
+        <h2>3. PlatformIO IDE extension</h2>
+        <p>In VS Code: Extensions. Search <strong>PlatformIO IDE</strong> (<code>platformio.platformio-ide</code>). Install. Reload when asked. The first PlatformIO run may download the toolchain; that needs internet.</p>
+        <p class="formula">Verify: the PlatformIO alien icon appears in the VS Code sidebar.</p>
+      </section>
+      <section>
+        <h2>4. CP210x USB access</h2>
+        <p>The Linux kernel often already includes <code>cp210x</code>. Add your user to the serial group, then log out and in. Debian/Ubuntu: <code>sudo usermod -aG dialout $USER</code>. Arch: use group <code>uucp</code>. Plug the board in with a <strong>data</strong> USB cable.</p>
+        <p class="formula">Verify: <code>ls /dev/ttyUSB0</code> (name may differ; also try <code>/dev/ttyACM0</code>).</p>
+      </section>
+    </div>
+
+    <div id="panel-macos" class="os-panel" role="tabpanel" aria-labelledby="tab-macos" hidden>
+      <section>
+        <h2>1. Git</h2>
+        <p>In Terminal: <code>xcode-select --install</code>. Or download from <a href="https://git-scm.com/download/mac">git-scm.com/download/mac</a>.</p>
+        <p class="formula">Verify: <code>git --version</code></p>
+      </section>
+      <section>
+        <h2>2. VS Code</h2>
+        <p>Download the macOS build from <a href="https://code.visualstudio.com/download">code.visualstudio.com/download</a>. Drag it to Applications.</p>
+        <p class="formula">Verify: open Visual Studio Code from Applications.</p>
+      </section>
+      <section>
+        <h2>3. PlatformIO IDE extension</h2>
+        <p>In VS Code: Extensions. Search <strong>PlatformIO IDE</strong> (<code>platformio.platformio-ide</code>). Install. Reload when asked. The first PlatformIO run may download the toolchain; that needs internet.</p>
+        <p class="formula">Verify: the PlatformIO alien icon appears in the VS Code sidebar.</p>
+      </section>
+      <section>
+        <h2>4. CP210x USB driver</h2>
+        <p>If the board is not detected, install Silicon Labs <a href="https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers">CP210x VCP drivers</a>. If macOS blocks the kext, allow it in System Settings → Privacy &amp; Security. Plug the board in with a <strong>data</strong> USB cable.</p>
+        <p class="formula">Verify: <code>ls /dev/cu.SLAB_USBtoUART /dev/cu.usbserial-*</code> (name may differ).</p>
+      </section>
+    </div>
+
+    <p class="formula">If the Silicon Labs driver does not create a port, the board may use a <strong>CH340</strong> chip instead of CP210x. Check the chip marking on the USB-UART part of the board.</p>
+  </main>
+  <script>
+    (function installOsTabs() {
+      const tabs = document.querySelectorAll('[role="tab"]');
+      const panels = {
+        windows: document.getElementById("panel-windows"),
+        linux: document.getElementById("panel-linux"),
+        macos: document.getElementById("panel-macos"),
+      };
+
+      function guessOs() {
+        const ua = navigator.userAgent || "";
+        const plat = navigator.platform || "";
+        if (/Win/i.test(plat) || /Windows/i.test(ua)) return "windows";
+        if (/Mac/i.test(plat) || /Mac OS/i.test(ua)) return "macos";
+        if (/Linux/i.test(plat) || /Linux/i.test(ua)) return "linux";
+        return "windows";
+      }
+
+      function showOs(os) {
+        const keys = Object.keys(panels);
+        for (let i = 0; i < keys.length; i++) {
+          const key = keys[i];
+          const on = key === os;
+          panels[key].hidden = !on;
+        }
+        for (let i = 0; i < tabs.length; i++) {
+          const on = tabs[i].getAttribute("data-os") === os;
+          tabs[i].setAttribute("aria-selected", on ? "true" : "false");
+        }
+      }
+
+      for (let i = 0; i < tabs.length; i++) {
+        tabs[i].addEventListener("click", function onTab() {
+          showOs(tabs[i].getAttribute("data-os"));
+        });
+      }
+      showOs(guessOs());
+    })();
+  </script>
+</body>
+</html>

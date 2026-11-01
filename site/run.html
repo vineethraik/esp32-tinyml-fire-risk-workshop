@@ -6,6 +6,7 @@
   <title>Run</title>
   <link rel="stylesheet" href="css/site.css">
   <script src="js/nav.js"></script>
+  <script src="js/run.js"></script>
 </head>
 <body data-page="run.html">
   <header>
@@ -13,8 +14,52 @@
     <nav data-site-nav></nav>
   </header>
   <main>
-    <h2>Run</h2>
-    <p class="lede">Copying weights into the ESP32 header comes next. Use the top navigation to open Perceptron or Neural net.</p>
+    <p class="lede">Talk to firmware <strong>04_final_combined</strong> over USB. Chrome or Edge. Baud <strong>115200</strong>. Close PlatformIO Serial Monitor first. Opening the port usually resets the ESP32; a <code>READY</code> line is expected. The math is in <code>js/run.js</code>.</p>
+    <div class="stack">
+      <section>
+        <h2>Port</h2>
+        <div class="row-actions">
+          <button type="button" id="connect">Connect</button>
+          <button type="button" id="disconnect" class="secondary" disabled>Disconnect</button>
+        </div>
+        <p id="port-status" class="formula">disconnected</p>
+      </section>
+      <section>
+        <h2>Commands</h2>
+        <p class="formula">Each button sends one newline-terminated AT line. Delete is two steps: arm, then confirm within 30 seconds.</p>
+        <div class="row-actions">
+          <button type="button" class="cmd" data-cmd="AT" disabled>AT</button>
+          <button type="button" class="cmd" data-cmd="AT+STATUS" disabled>AT+STATUS</button>
+          <button type="button" class="cmd" data-cmd="AT+LOG" disabled>AT+LOG</button>
+          <button type="button" class="cmd" data-cmd="AT+LOG,ON" disabled>AT+LOG,ON</button>
+          <button type="button" class="cmd" data-cmd="AT+LOG,OFF" disabled>AT+LOG,OFF</button>
+          <button type="button" class="cmd" data-cmd="AT+RISK" disabled>AT+RISK</button>
+          <button type="button" class="cmd" data-cmd="AT+RISK,ON" disabled>AT+RISK,ON</button>
+          <button type="button" class="cmd" data-cmd="AT+RISK,OFF" disabled>AT+RISK,OFF</button>
+          <button type="button" class="cmd" data-cmd="AT+EXPORT" disabled>AT+EXPORT</button>
+        </div>
+        <div class="controls">
+          <label>Export offset
+            <input id="export-offset" type="number" min="0" step="1" value="0" disabled>
+          </label>
+          <label>Export count
+            <input id="export-count" type="number" min="1" step="1" value="256" disabled>
+          </label>
+          <button type="button" id="export-range" class="secondary" disabled>AT+EXPORT,offset,count</button>
+        </div>
+        <div class="row-actions">
+          <button type="button" class="cmd delete" data-cmd="AT+DELETE" disabled>AT+DELETE</button>
+          <button type="button" class="cmd delete" data-cmd="AT+DELETE,CONFIRM" disabled>AT+DELETE,CONFIRM</button>
+        </div>
+      </section>
+      <section>
+        <h2>Monitor</h2>
+        <div class="row-actions">
+          <button type="button" id="clear-monitor" class="secondary">Clear</button>
+        </div>
+        <pre id="monitor" class="serial-monitor">Connect, then watch READY and command replies here.</pre>
+      </section>
+    </div>
   </main>
 </body>
 </html>

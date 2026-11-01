@@ -735,6 +735,7 @@ pip install -r requirements.txt
 - [Live demo runbook](docs/DEMO_RUNBOOK.md)
 - [Firmware stages](firmware/README.md)
 - [Dataset guide](data/README.md)
+- [Isolated TinyML follow-on projects](docs/ISOLATED_TINYML_PROJECTS.md)
 
 ## Rebuilding generated material
 

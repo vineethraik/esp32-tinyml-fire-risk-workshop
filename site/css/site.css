@@ -233,6 +233,42 @@ td select.activation-choice {
   white-space: pre-wrap;
 }
 
+.setup-link {
+  max-width: 68ch;
+  font: 15px/1.4 ui-sans-serif, system-ui, sans-serif;
+}
+
+.os-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.os-tabs [role="tab"] {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: white;
+  color: var(--accent-ink);
+}
+
+.os-tabs [role="tab"][aria-selected="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.os-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.os-panel[hidden] {
+  display: none;
+}
+
 .path {
   padding-left: 1.2rem;
 }
@@ -259,6 +295,19 @@ td select.activation-choice {
 .network-readout {
   max-height: 220px;
   overflow: auto;
+}
+
+.serial-monitor {
+  margin: 0;
+  min-height: 16rem;
+  max-height: 50vh;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  font: 13px/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  white-space: pre-wrap;
 }
 
 .subhead {
