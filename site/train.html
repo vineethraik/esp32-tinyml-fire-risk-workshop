@@ -68,7 +68,10 @@
           <button type="button" id="infer" class="secondary">Infer</button>
           <button type="button" id="random-weights" class="secondary">Random weights</button>
           <button type="button" id="reset-weights" class="secondary">Reset weights</button>
+          <button type="button" id="export-h" class="secondary">Export .h</button>
+          <button type="button" id="copy-header" class="secondary" disabled>Copy</button>
         </div>
+        <p class="formula">Export fills a full <code>thermal_risk_model.h</code>. Copy, then paste over <code>include/thermal_risk_model.h</code> (whole file). Build/Upload <code>04_final_combined</code>.</p>
         <div class="controls">
           <label>Learning rate
             <input id="learning-rate" type="number" value="0.05" step="0.01">
@@ -84,6 +87,7 @@
           </label>
         </div>
         <pre id="readout" class="network-readout">Weights start at 0. Press Random weights, then Step.</pre>
+        <textarea id="header-export" class="header-export" readonly spellcheck="false" placeholder="Press Export .h after training. Then Copy and paste over include/thermal_risk_model.h."></textarea>
       </section>
       <section>
         <h2>Scores</h2>
